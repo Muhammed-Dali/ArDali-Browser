@@ -4,7 +4,7 @@
 
 #include <QString>
 
-namespace ardali::core {
+namespace dalinira::core {
 
 struct SearchEngineDefinition {
   const char *id;
@@ -12,6 +12,7 @@ struct SearchEngineDefinition {
   const char *placeholder;
   const char *searchUrl;
   const char *suggestUrl;
+  const char *queryParam;
 };
 
 const std::array<SearchEngineDefinition, 4> &searchEngineDefinitions();
@@ -20,4 +21,4 @@ QString searchEngineIconAsset(const QString &engineName);
 QString searchEngineResourcePath(const QString &engineName);
 QString searchEnginePlaceholderText(const QString &engineName);
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

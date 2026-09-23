@@ -2,14 +2,14 @@
 
 #include <QString>
 
-namespace ardali::application_identity {
+namespace dalinira::application_identity {
 
-inline constexpr auto kApplicationName = "ArDaliBrowser";
-inline constexpr auto kDisplayName = "ArDali";
-inline constexpr auto kOrganizationName = "ArDali";
-inline constexpr auto kDesktopFileName = "ardali";
-inline constexpr auto kStartupWmClass = "ArDaliBrowser";
+inline constexpr auto kApplicationName = "DaliNiraBrowser";
+inline constexpr auto kDisplayName = "DaliNira";
+inline constexpr auto kOrganizationName = "DaliNira";
+inline constexpr auto kDesktopFileName = "dalinira";
+inline constexpr auto kStartupWmClass = "DaliNiraBrowser";
 
 void apply();
 
-}  // namespace ardali::application_identity
+}  // namespace dalinira::application_identity

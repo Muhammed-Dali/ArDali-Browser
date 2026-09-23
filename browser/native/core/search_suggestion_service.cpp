@@ -35,9 +35,12 @@ bool SearchSuggestionService::safeQuery(const QString &query) {
   return !unsafe.match(query.trimmed()).hasMatch();
 }
 QUrl SearchSuggestionService::endpoint(const QString &engine, const QString &query) {
-  const auto &definition = ardali::core::searchEngineDefinition(engine);
-  // Exact metadata membership: never interpret a caller-supplied URL as provider.
-  if (engine != QString::fromLatin1(definition.id) || !safeQuery(query)) return {};
+  const auto &definition = dalinira::core::searchEngineDefinition(engine);
+  const bool isLegacyFallback = (engine.compare(QLatin1String("Brave Search"), Qt::CaseInsensitive) == 0 ||
+                                 engine.compare(QLatin1String("Brave"), Qt::CaseInsensitive) == 0 ||
+                                 engine.compare(QLatin1String("Bing"), Qt::CaseInsensitive) == 0);
+  if ((engine != QString::fromLatin1(definition.id) && !isLegacyFallback) || !safeQuery(query)) return {};
+  if (!definition.suggestUrl || !definition.suggestUrl[0]) return {};
   QUrl url(QString::fromLatin1(definition.suggestUrl));
   QUrlQuery params(url);
   params.addQueryItem(QStringLiteral("q"), query);
@@ -47,8 +50,11 @@ QUrl SearchSuggestionService::endpoint(const QString &engine, const QString &que
 QStringList SearchSuggestionService::parseResponse(const QByteArray &bytes) {
   if (bytes.size() > MaxResponseBytes) return {};
   QJsonParseError error;
-  const auto document = QJsonDocument::fromJson(bytes, &error);
-  if (error.error != QJsonParseError::NoError || !document.isArray()) return {};
+  auto document = QJsonDocument::fromJson(bytes, &error);
+  if (error.error != QJsonParseError::NoError || !document.isArray()) {
+    document = QJsonDocument::fromJson(QString::fromLatin1(bytes).toUtf8(), &error);
+    if (error.error != QJsonParseError::NoError || !document.isArray()) return {};
+  }
   auto values = document.array();
   if (values.size() >= 2 && values[1].isArray()) values = values[1].toArray();
   QStringList result;
@@ -80,7 +86,7 @@ void SearchSuggestionService::start() {
   request.setAttribute(QNetworkRequest::CookieSaveControlAttribute, QNetworkRequest::Manual);
   request.setAttribute(QNetworkRequest::AuthenticationReuseAttribute, QNetworkRequest::Manual);
   request.setRawHeader("Accept", "application/json");
-  request.setRawHeader("User-Agent", "ArDali/6.1");
+  request.setRawHeader("User-Agent", "DaliNira/6.1");
   auto *reply = network_->get(request);
   reply_ = reply;
   reply->setReadBufferSize(MaxResponseBytes + 1);

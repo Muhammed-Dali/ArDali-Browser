@@ -4,7 +4,7 @@
 
 #include "domain_normalizer.h"
 
-namespace ardali::core {
+namespace dalinira::core {
 
 BookmarkCandidateProvider::BookmarkCandidateProvider(
     IBrowserProfileDataProvider *dataProvider,
@@ -165,4 +165,4 @@ std::optional<QUrl> BookmarkCandidateProvider::findNavigationCandidate(
   return std::nullopt;
 }
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

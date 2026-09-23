@@ -11,10 +11,10 @@
 #include <QJsonValue>
 #include <QLoggingCategory>
 
-namespace ardali::i18n {
+namespace dalinira::i18n {
 
 namespace {
-Q_LOGGING_CATEGORY(lcI18n, "ardali.i18n")
+Q_LOGGING_CATEGORY(lcI18n, "dalinira.i18n")
 }
 
 LanguageManager &LanguageManager::instance() {
@@ -400,4 +400,4 @@ QHash<QString, QString> LanguageManager::fallbackCatalog() const {
   return fallbackCatalog_;
 }
 
-}  // namespace ardali::i18n
+}  // namespace dalinira::i18n

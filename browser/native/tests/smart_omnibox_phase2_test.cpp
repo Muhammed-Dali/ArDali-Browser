@@ -18,7 +18,7 @@
 #include "core/history_candidate_provider.h"
 #include "core/navigation_candidate.h"
 
-using namespace ardali::core;
+using namespace dalinira::core;
 
 class MockProfileDataProvider : public QObject, public IBrowserProfileDataProvider {
   Q_OBJECT

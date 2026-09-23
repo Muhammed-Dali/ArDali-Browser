@@ -1,12 +1,12 @@
 # Changelog
 
-All notable release-facing changes to ArDali Browser are documented here.
+All notable release-facing changes to DaliNira Browser are documented here.
 
 ## [7.2.0] - 2026-09-21
 
 ### Added
 
-- Added the **ArDali Bağlantılı** tab style with a connected active-tab accent, made it the default for new profiles, and exposed persistent tab-style selection in Settings.
+- Added the **DaliNira Bağlantılı** tab style with a connected active-tab accent, made it the default for new profiles, and exposed persistent tab-style selection in Settings.
 - Added Linux Secret Service-backed device keyring integration for stronger local credential-vault protection and migration coverage.
 - Added focused contributor, architecture, build, testing, debugging, security, and issue-reporting documentation.
 
@@ -21,7 +21,7 @@ All notable release-facing changes to ArDali Browser are documented here.
 ### Fixed
 
 - Fixed custom New Tab background upload, preview, immediate application, replacement, removal, restart persistence, and safe PNG/JPEG/WebP validation without exposing unrestricted local-file access.
-- Prevented ArDali Blocker from breaking normal YouTube playback by narrowing ad-stream matching and suppressing destabilizing YouTube procedural/scriptlet behavior.
+- Prevented DaliNira Blocker from breaking normal YouTube playback by narrowing ad-stream matching and suppressing destabilizing YouTube procedural/scriptlet behavior.
 - Hardened credential autofill, save prompts, vault migration, origin validation, private-profile isolation, and sensitive-memory cleanup.
 - Corrected blocker accounting and ruleset updates, session restoration, translation lifecycle handling, and several asynchronous WebEngine lifetime paths.
 - Expanded deterministic regression coverage across passwords, translation, blocker, media, audio, tabs, performance settings, omnibox, and internal pages.
@@ -30,9 +30,9 @@ All notable release-facing changes to ArDali Browser are documented here.
 
 ### Added
 
-- Added internal media player support (`ardali://player`) and local media routing for downloaded audio and video files.
+- Added internal media player support (`dalinira://player`) and local media routing for downloaded audio and video files.
 - Enabled DALI Web Audio DSP processing and equalizer effects for internal playback of downloaded media.
-- Added launcher wrapper and taskbar icon grouping integration via `StartupWMClass=ArDaliBrowser` and default browser prompt handling.
+- Added launcher wrapper and taskbar icon grouping integration via `StartupWMClass=DaliNiraBrowser` and default browser prompt handling.
 
 ### Fixed
 
@@ -43,7 +43,7 @@ All notable release-facing changes to ArDali Browser are documented here.
 
 ### Fixed
 
-- Corrected New Tab asset discovery for installed Linux packages whose executable lives under `/usr/lib/ardali-browser` while runtime assets live under `/usr/share/ardali-browser`.
+- Corrected New Tab asset discovery for installed Linux packages whose executable lives under `/usr/lib/dalinira-browser` while runtime assets live under `/usr/share/dalinira-browser`.
 - Added embedded fallbacks for the New Tab logo, background, search-engine artwork, and interface icons so a missing external asset can no longer produce broken-image placeholders.
 - Added installed, portable, and build-tree asset-layout regression coverage.
 
@@ -71,14 +71,14 @@ All notable release-facing changes to ArDali Browser are documented here.
 ### Added
 
 - **GeneralDownloadManager Engine**: High-performance adaptive multi-connection segmented download pipeline with 1 → 2 → 4 → 8 parallel streams, dynamic work stealing, chunk pre-allocation, pause/resume/cancel/part-level retry, and 429 throttling backoff.
-- **Download Management UI**: Dedicated toolbar download popup (`DownloadToolbarUI`) with live speed metering and an updated internal downloads page (`ardali://downloads`).
+- **Download Management UI**: Dedicated toolbar download popup (`DownloadToolbarUI`) with live speed metering and an updated internal downloads page (`dalinira://downloads`).
 - **Smart Omnibox Navigation**: Composite navigation ranking aggregating history, bookmarks, and frequent sites with domain normalizer and real-time search suggestions (DuckDuckGo, Google, Brave, Bing).
 - **Granular Site Permissions**: `SiteControlsBubble` and `SitePermissionPromptBubble` providing per-origin toggles for Camera, Microphone, Geolocation, Notifications, Popups, Insecure Content, and JavaScript optimization.
 - **Encrypted Local Credential Vault**: Zero-cloud password management with AES-256-GCM encryption, PBKDF2-HMAC-SHA256 key derivation, in-page autofill controller, save bubbles, and vault unlock dialogs.
 - **Hardware-Accelerated WebEngine**: Zero-copy video decoding pipelines, early GPU runtime flags, subprocess memory policy, tab memory hover cards, and tab memory pressure monitor.
 - **AutoEQ Presets Integration**: Bundled 1,757 calibrated AutoEQ headphone correction profiles for audiophile hardware in `browser/resources/eq-presets/autoeq` and CMake install rules.
 - **CMake & Packaging Integration**: Complete `GNUInstallDirs` support, unified `.desktop` specification, full hicolor icon resolution suite (16px to 1024px), and updated PKGBUILDs for Arch Linux and AUR.
-- **ArDali Listen**: PipeWire/PulseAudio discovery, ffmpeg-backed 16 kHz mono capture, live input levels, persistent settings, dedicated `ardali://listen` pages, and single-instance tab integration.
+- **DaliNira Listen**: PipeWire/PulseAudio discovery, ffmpeg-backed 16 kHz mono capture, live input levels, persistent settings, dedicated `dalinira://listen` pages, and single-instance tab integration.
 - **Media Downloader**: yt-dlp analysis, metadata and thumbnails, selectable audio/video formats, adaptive-stream merging, conversion, embedded metadata and cover art, subtitles, ranges, playlists, queues, retry, cancellation, history, and export.
 - **Desktop Tab Architecture**: Detach/attach, cross-window drag sessions, groups, search, animations, hover cards, audible/fullscreen state, memory-pressure handling, and lifecycle-safe restore.
 - **Languages & Translation**: Centralized English, Turkish, and Arabic catalogs, runtime switching, system-locale detection, persistent preferences, RTL/LTR metadata, preferred-language ordering, spell check, custom dictionary, and page translation providers.
@@ -87,7 +87,7 @@ All notable release-facing changes to ArDali Browser are documented here.
 ### Changed
 
 - Updated version metadata to 7.0.0 across CMake, application runtime, package manifests, and Arch/AUR packaging.
-- Enhanced resource search paths to reliably locate AutoEQ presets and AdBlock rulesets in portable, build, and system-installed `/usr/share/ardali-browser/` environments.
+- Enhanced resource search paths to reliably locate AutoEQ presets and AdBlock rulesets in portable, build, and system-installed `/usr/share/dalinira-browser/` environments.
 - Enforced strict assertions (`-UNDEBUG`) across all automated test suites.
 - Expanded the verified suite to 29 CTest targets covering blocker accounting, song finding, downloads, permissions, omnibox behavior, translation, i18n, tab lifecycle, performance, credentials, and security.
 
@@ -101,15 +101,15 @@ All notable release-facing changes to ArDali Browser are documented here.
 
 ### Changed
 
-- Displays the installed application name as `ArDali` in desktop launchers.
-- Installs the verified ArDali bee-shield icon under the `ardali` icon identity.
+- Displays the installed application name as `DaliNira` in desktop launchers.
+- Installs the verified DaliNira bee-shield icon under the `dalinira` icon identity.
 - Standardized package manifests for Arch Linux, AUR, and the pacman repository.
 
 ## [6.0.1] - 2026-08-24
 
 ### Changed
 
-- Clarified that ArDali Blocker is ArDali Browser's built-in advertising and
+- Clarified that DaliNira Blocker is DaliNira Browser's built-in advertising and
   tracker protection engine, while third-party filter and ruleset resources
   retain separate attribution in `NOTICE.txt`.
 - Added the Qt image-format runtime dependency required for bundled WebP
@@ -126,22 +126,22 @@ All notable release-facing changes to ArDali Browser are documented here.
 
 ### Changed
 
-- Rebuilt ArDali as a native Qt 6 and C++20 desktop browser.
+- Rebuilt DaliNira as a native Qt 6 and C++20 desktop browser.
 - Reorganized the browser into modular core, tabs, settings, audio, blocker,
   password, Pulse, sidebar, and session components.
 - Migrated the Linux desktop integration and Arch packaging to the
-  `ardali-browser` executable and product identity.
+  `dalinira-browser` executable and product identity.
 
 ### Added
 
-- ArDali Blocker with local request filtering, cosmetic filtering, rule-set
+- DaliNira Blocker with local request filtering, cosmetic filtering, rule-set
   controls, per-site controls, and inspection tools.
-- ArDali Pulse music recognition using system audio or microphone capture.
+- DaliNira Pulse music recognition using system audio or microphone capture.
 - An encrypted local credential vault and password-management interface.
 - Custom new-tab, audio effects, 32-band equalizer presets, tab workspaces,
   and redesigned browser settings.
 
 ### Migration note
 
-ArDali Browser 6.0.0 is a major architectural transition from
-ArDali-WebMedia 5.5.2. Existing user-data migration is not guaranteed.
+DaliNira Browser 6.0.0 is a major architectural transition from
+DaliNira-WebMedia 5.5.2. Existing user-data migration is not guaranteed.

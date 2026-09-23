@@ -46,7 +46,7 @@ class MockKeyringProvider : public DeviceKeyring::Provider {
 }
 
 int main() {
-  std::cout << "Starting ArDali Credential Vault Security & Keyring Test Suite..." << std::endl;
+  std::cout << "Starting DaliNira Credential Vault Security & Keyring Test Suite..." << std::endl;
 
   // 1. Basic Vault Operations & Ciphertext-at-Rest Security Invariants
   {
@@ -264,7 +264,7 @@ int main() {
 
     // Rejection of non-HTTPS schemes
     assert(CredentialVault::canonicalHttpsOrigin(QUrl(QStringLiteral("http://example.com"))).isEmpty());
-    assert(CredentialVault::canonicalHttpsOrigin(QUrl(QStringLiteral("ardali://passwords"))).isEmpty());
+    assert(CredentialVault::canonicalHttpsOrigin(QUrl(QStringLiteral("dalinira://passwords"))).isEmpty());
     assert(CredentialVault::canonicalHttpsOrigin(QUrl(QStringLiteral("file:///etc/passwd"))).isEmpty());
 
     // Rejection of credentials embedded in URL
@@ -301,7 +301,7 @@ int main() {
     assert(multi.createVault(QStringLiteral("İş"), changedMaster, &workId));
     assert(multi.saveToVault(workId, {QStringLiteral("https://example.net"), QStringLiteral("work-user"), QStringLiteral("work-secret"), QString{}}));
     assert(multi.forOrigin(QUrl(QStringLiteral("https://example.net/login"))).size() == 2);
-    const QString backupPath = multiRoot.path() + QStringLiteral("/portable.ardali-vault-backup");
+    const QString backupPath = multiRoot.path() + QStringLiteral("/portable.dalinira-vault-backup");
     const QString backupPassword = QStringLiteral("BackupPassword#2026");
     assert(multi.exportBackup(backupPath, backupPassword));
     QFile backupFile(backupPath); assert(backupFile.open(QIODevice::ReadOnly)); const QByteArray backupBytes = backupFile.readAll(); assert(!backupBytes.contains("personal-secret") && !backupBytes.contains("work-secret"));
@@ -322,6 +322,6 @@ int main() {
     std::cout << "[PASS] Multi-Vault Management, Portable Export & Import" << std::endl;
   }
 
-  std::cout << "All ArDali Credential Vault Security & Keyring tests passed successfully!" << std::endl;
+  std::cout << "All DaliNira Credential Vault Security & Keyring tests passed successfully!" << std::endl;
   return 0;
 }

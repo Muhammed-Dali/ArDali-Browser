@@ -1,10 +1,10 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_ANIMATION_METRICS_H_
-#define ARDALI_DESKTOP_TABS_TAB_ANIMATION_METRICS_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_ANIMATION_METRICS_H_
+#define DALINIRA_DESKTOP_TABS_TAB_ANIMATION_METRICS_H_
 
 #include <QSettings>
 #include <QtGlobal>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 // Central timings for tab-strip and tear-off transitions. Keeping these in
 // one place also gives tests and reduced-motion users a deterministic instant
@@ -20,7 +20,7 @@ struct TabAnimationMetrics {
   static constexpr qreal detachedWindowInitialOpacity = 0.88;
 
   static bool animationsEnabled() {
-    if (qEnvironmentVariableIntValue("ARDALI_DISABLE_ANIMATIONS") == 1) {
+    if (qEnvironmentVariableIntValue("DALINIRA_DISABLE_ANIMATIONS") == 1) {
       return false;
     }
     return QSettings().value(QStringLiteral("browser/animationsEnabled"), true)
@@ -28,6 +28,6 @@ struct TabAnimationMetrics {
   }
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_ANIMATION_METRICS_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_ANIMATION_METRICS_H_

@@ -1,11 +1,11 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_GROUP_LAUNCHER_POPUP_H_
-#define ARDALI_DESKTOP_TABS_TAB_GROUP_LAUNCHER_POPUP_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_GROUP_LAUNCHER_POPUP_H_
+#define DALINIRA_DESKTOP_TABS_TAB_GROUP_LAUNCHER_POPUP_H_
 
 #include <QWidget>
 
 class QKeyEvent;
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 class TabGroupLauncherPopup : public QWidget {
   Q_OBJECT
@@ -25,6 +25,6 @@ class TabGroupLauncherPopup : public QWidget {
   void setupUi();
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_GROUP_LAUNCHER_POPUP_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_GROUP_LAUNCHER_POPUP_H_

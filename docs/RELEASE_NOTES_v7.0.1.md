@@ -1,8 +1,8 @@
-# ArDali Browser 7.0.1
+# DaliNira Browser 7.0.1
 
 Released on 12 September 2026.
 
-ArDali Browser 7.0.1 is a reliability release for the Linux test and release
+DaliNira Browser 7.0.1 is a reliability release for the Linux test and release
 pipeline.
 
 ## Reliability fixes
@@ -31,4 +31,4 @@ pipeline.
 
 Linux x86_64 remains the verified build, test, packaging, and release platform.
 The portable archive uses the existing `/usr` installation layout and ships as
-`ardali-browser-7.0.1-linux-x86_64.tar.zst`.
+`dalinira-browser-7.0.1-linux-x86_64.tar.zst`.

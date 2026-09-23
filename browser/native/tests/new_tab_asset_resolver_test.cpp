@@ -16,15 +16,15 @@ int main(int argc, char **argv) {
   QTemporaryDir root;
   if (!root.isValid()) return fail("temporary root missing");
 
-  const QString installedApplicationDirectory = root.path() + QStringLiteral("/usr/lib/ardali-browser");
-  const QString installedAssetsDirectory = root.path() + QStringLiteral("/usr/share/ardali-browser/new-tab");
+  const QString installedApplicationDirectory = root.path() + QStringLiteral("/usr/lib/dalinira-browser");
+  const QString installedAssetsDirectory = root.path() + QStringLiteral("/usr/share/dalinira-browser/new-tab");
   if (!QDir().mkpath(installedApplicationDirectory) || !QDir().mkpath(installedAssetsDirectory))
     return fail("installed layout fixture missing");
   if (resolveNewTabAssetsDirectory(installedApplicationDirectory) != installedAssetsDirectory)
     return fail("/usr/lib application did not resolve /usr/share assets");
 
   const QString portableApplicationDirectory = root.path() + QStringLiteral("/portable/bin");
-  const QString portableAssetsDirectory = root.path() + QStringLiteral("/portable/share/ardali-browser/new-tab");
+  const QString portableAssetsDirectory = root.path() + QStringLiteral("/portable/share/dalinira-browser/new-tab");
   if (!QDir().mkpath(portableApplicationDirectory) || !QDir().mkpath(portableAssetsDirectory))
     return fail("portable layout fixture missing");
   if (resolveNewTabAssetsDirectory(portableApplicationDirectory) != portableAssetsDirectory)

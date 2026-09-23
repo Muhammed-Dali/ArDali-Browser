@@ -1,7 +1,7 @@
 {
-  "name": "ardali-browser",
+  "name": "dalinira-browser",
   "version": "7.2.0",
-  "description": "ArDali Browser - Modern Qt/C++ desktop browser with integrated privacy, advanced download manager, and audiophile sound engine",
+  "description": "DaliNira Browser - Modern Qt/C++ desktop browser with integrated privacy, advanced download manager, and audiophile sound engine",
   "private": true,
   "scripts": {
     "start": "node scripts/dev-linux.js",

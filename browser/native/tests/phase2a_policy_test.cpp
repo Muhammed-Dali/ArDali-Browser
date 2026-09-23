@@ -8,7 +8,7 @@
 int main(int argc, char *argv[]) {
   QCoreApplication app(argc, argv);
 
-  using ardali::audio::isSupportedAudioPlatform;
+  using dalinira::audio::isSupportedAudioPlatform;
   const QStringList accepted{
       QStringLiteral("https://youtube.com"),
       QStringLiteral("https://www.youtube.com"),
@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
       QStringLiteral("https://nottiktok.com"),
       QStringLiteral("https://amazon.com"),
       QStringLiteral("https://walmart.com"),
-      QStringLiteral("ardali://newtab/"),
+      QStringLiteral("dalinira://newtab/"),
       QStringLiteral("file:///tmp/video.html"),
   };
   for (const QString &url : rejected) assert(!isSupportedAudioPlatform(QUrl(url)));

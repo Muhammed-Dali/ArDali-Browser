@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_GROUP_MODEL_H_
-#define ARDALI_DESKTOP_TABS_TAB_GROUP_MODEL_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_GROUP_MODEL_H_
+#define DALINIRA_DESKTOP_TABS_TAB_GROUP_MODEL_H_
 
 #include <QtCore/QUuid>
 #include <QtGui/QColor>
@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 struct TabGroup {
   QUuid id;
@@ -73,6 +73,6 @@ class TabGroupModel : public QObject {
   QMap<uint64_t, QUuid> tabToGroup_;  // Keyed strictly by stable uint64_t tabId
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_GROUP_MODEL_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_GROUP_MODEL_H_

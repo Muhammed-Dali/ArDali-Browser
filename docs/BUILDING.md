@@ -1,6 +1,6 @@
-# Building ArDali Browser
+# Building DaliNira Browser
 
-This guide details the system prerequisites, dependencies, compilation steps, and optional feature integrations for building ArDali Browser from source on Linux.
+This guide details the system prerequisites, dependencies, compilation steps, and optional feature integrations for building DaliNira Browser from source on Linux.
 
 ---
 
@@ -17,9 +17,9 @@ This guide details the system prerequisites, dependencies, compilation steps, an
 ## 2. Dependency Breakdown
 
 ### Required Build Dependencies
-These libraries and tools must be present to configure and compile ArDali Browser:
+These libraries and tools must be present to configure and compile DaliNira Browser:
 
-| Component | Minimum Version | Purpose in ArDali |
+| Component | Minimum Version | Purpose in DaliNira |
 | --------- | --------------- | ----------------- |
 | **Qt 6** | >= 6.4 | Core GUI, Widgets, WebEngine, Network, SVG, DBus, Concurrent |
 | **Qt WebEngine** | >= 6.4 | Chromium-based browser engine and rendering pipeline |
@@ -31,14 +31,14 @@ These libraries and tools must be present to configure and compile ArDali Browse
 ### Optional Build Dependencies
 | Library | Feature Affected | Fallback Behavior if Missing |
 | ------- | ---------------- | ---------------------------- |
-| **libsecret-1** (`libsecret-dev` / `libsecret-devel`) | Hardware-bound credential vault (`DeviceKeyring`) | Automatically detected. If absent, ArDali compiles with standard PBKDF2 master password derivation without OS session keyring binding. |
+| **libsecret-1** (`libsecret-dev` / `libsecret-devel`) | Hardware-bound credential vault (`DeviceKeyring`) | Automatically detected. If absent, DaliNira compiles with standard PBKDF2 master password derivation without OS session keyring binding. |
 
 ### Optional Runtime Tools
 | Tool | Feature Affected | Fallback Behavior if Missing |
 | ---- | ---------------- | ---------------------------- |
-| **ffmpeg** | Media Downloads / Player (`ardali://player`) | Downloaded audio/video streams cannot be muxed or converted. Direct video streams play if supported natively. |
+| **ffmpeg** | Media Downloads / Player (`dalinira://player`) | Downloaded audio/video streams cannot be muxed or converted. Direct video streams play if supported natively. |
 | **yt-dlp** | Video Link Extraction (`MediaDownloadService`) | Media download analysis will notify user that yt-dlp is required. |
-| **pulseaudio** / **pipewire-pulse** | ArDali Pulse (`ardali://pulse`) | System audio stream capture cannot record system output; microphone capture works if ALSA/Pulse device is present. |
+| **pulseaudio** / **pipewire-pulse** | DaliNira Pulse (`dalinira://pulse`) | System audio stream capture cannot record system output; microphone capture works if ALSA/Pulse device is present. |
 | **qtwebengine_dictionaries** | Spell Checking | Spell checking is disabled with a non-fatal terminal warning. |
 | **VA-API / GPU Drivers** (`libva-intel-driver`, `mesa-va-drivers`) | Hardware Video Decoding | Falls back to CPU software decoding automatically. |
 
@@ -89,8 +89,8 @@ sudo dnf install -y libsecret-devel ffmpeg-free yt-dlp
 
 ### Step 1: Clone Repository
 ```bash
-git clone https://github.com/Muhammed-Dali/ArDali-Browser.git
-cd ArDali-Browser
+git clone https://github.com/Muhammed-Dali/DaliNira-Browser.git
+cd DaliNira-Browser
 ```
 
 ### Step 2: Configure with CMake
@@ -116,12 +116,12 @@ cmake --build build -j$(nproc)
 
 To build only the main browser executable:
 ```bash
-cmake --build build --target ardali-browser -j$(nproc)
+cmake --build build --target dalinira-browser -j$(nproc)
 ```
 
 To build a specific test executable:
 ```bash
-cmake --build build --target ardali-browser-password-autofill-test -j$(nproc)
+cmake --build build --target dalinira-browser-password-autofill-test -j$(nproc)
 ```
 
 ---
@@ -130,25 +130,25 @@ cmake --build build --target ardali-browser-password-autofill-test -j$(nproc)
 
 Execute directly from the build directory:
 ```bash
-./build/ardali-browser
+./build/dalinira-browser
 ```
 
 To open a specific website or internal page on startup:
 ```bash
-./build/ardali-browser https://github.com
-./build/ardali-browser ardali://passwords
+./build/dalinira-browser https://github.com
+./build/dalinira-browser dalinira://passwords
 ```
 
 To run with developer diagnostics and Chromium logging to terminal:
 ```bash
-QTWEBENGINE_CHROMIUM_FLAGS="--enable-logging=stderr --v=1" ./build/ardali-browser
+QTWEBENGINE_CHROMIUM_FLAGS="--enable-logging=stderr --v=1" ./build/dalinira-browser
 ```
 
 ---
 
 ## 6. Installing to System (Optional)
 
-To install ArDali Browser to the standard system prefix (`/usr/local` by default):
+To install DaliNira Browser to the standard system prefix (`/usr/local` by default):
 ```bash
 sudo cmake --install build
 ```

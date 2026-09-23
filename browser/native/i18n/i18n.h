@@ -2,7 +2,7 @@
 
 #include "language_manager.h"
 
-namespace ardali::i18n {
+namespace dalinira::i18n {
 
 class I18n {
  public:
@@ -27,10 +27,10 @@ class I18n {
   }
 };
 
-}  // namespace ardali::i18n
+}  // namespace dalinira::i18n
 
-namespace ardali {
-using I18n = ardali::i18n::I18n;
+namespace dalinira {
+using I18n = dalinira::i18n::I18n;
 }
 
-using I18n = ardali::i18n::I18n;
+using I18n = dalinira::i18n::I18n;

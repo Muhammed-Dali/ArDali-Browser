@@ -1,5 +1,5 @@
 /**
- * ArDali Browser Official Website - Vanilla JavaScript
+ * DaliNira Browser Official Website - Vanilla JavaScript
  * Minimal, Security-First, Zero Dependencies, Zero Tracking
  */
 "use strict";

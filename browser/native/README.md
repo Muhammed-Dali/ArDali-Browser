@@ -1,6 +1,6 @@
-# ArDali Browser Native Modules
+# DaliNira Browser Native Modules
 
-This directory contains the native C++/Qt components powering ArDali Browser.
+This directory contains the native C++/Qt components powering DaliNira Browser.
 
 ## Directory Structure
 
@@ -21,10 +21,10 @@ This directory contains the native C++/Qt components powering ArDali Browser.
   Shared audio infrastructure, device enumeration, capture services, and effects controller.
 
 - `pulse/`
-  ArDali Pulse music recognition subsystem, audio fingerprinting, and search UI.
+  DaliNira Pulse music recognition subsystem, audio fingerprinting, and search UI.
 
 - `blocker/`
-  ArDali Blocker network request filtering, cosmetic CSS injection, ruleset manager, and shield button.
+  DaliNira Blocker network request filtering, cosmetic CSS injection, ruleset manager, and shield button.
 
 - `passwords/`
   Password Manager, encrypted Credential Vault, and auto-fill integration.

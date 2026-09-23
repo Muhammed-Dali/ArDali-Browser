@@ -23,8 +23,8 @@ class QWebEngineDownloadRequest;
 class QWebEngineProfile;
 class QWebEngineUrlRequestInterceptor;
 class NewTabBackgroundStore;
-class ArDaliBlockerService;
-using AdBlockService = ArDaliBlockerService;
+class DaliNiraBlockerService;
+using AdBlockService = DaliNiraBlockerService;
 class CredentialVaultManager;
 class TranslateService;
 class GeneralDownloadManager;
@@ -48,7 +48,7 @@ struct CustomSearchEngine {
 
 // Owns the persistent Chromium profile and the browser-wide policies that are
 // independent of an individual tab or window.
-class BrowserProfileService final : public QObject, public ardali::core::IBrowserProfileDataProvider {
+class BrowserProfileService final : public QObject, public dalinira::core::IBrowserProfileDataProvider {
   Q_OBJECT
  public:
   BrowserProfileService(const QString &dataDirectory, const BrowserPolicy *policy, QObject *parent = nullptr, bool privateMode = false, QNetworkAccessManager *suggestionNetwork = nullptr);
@@ -56,8 +56,8 @@ class BrowserProfileService final : public QObject, public ardali::core::IBrowse
 
   QWebEngineProfile *profile() const;
   NewTabBackgroundStore *newTabBackgroundStore() const;
-  ArDaliBlockerService *blockerService() const;
-  ArDaliBlockerService *adBlockService() const { return blockerService(); }
+  DaliNiraBlockerService *blockerService() const;
+  DaliNiraBlockerService *adBlockService() const { return blockerService(); }
   CredentialVaultManager *credentialVault() const;
   TranslateService *translateService() const;
   QString dataDirectory() const;
@@ -79,6 +79,9 @@ class BrowserProfileService final : public QObject, public ardali::core::IBrowse
 
   bool stripsTrackingParameters() const;
   void setStripsTrackingParameters(bool enabled);
+
+  bool isAdultContentProtectionEnabled() const;
+  void setAdultContentProtectionEnabled(bool enabled);
 
   // Permission policies
   QString permissionDefaultPolicy(const QString &permissionKey) const;
@@ -215,6 +218,7 @@ class BrowserProfileService final : public QObject, public ardali::core::IBrowse
   void searchEngineChanged(const QString &engine);
   void closedTabsChanged();
   void secureDnsChanged();
+  void adultContentProtectionChanged(bool enabled);
 
  private:
   QString downloadDirectory() const;
@@ -225,7 +229,7 @@ class BrowserProfileService final : public QObject, public ardali::core::IBrowse
   QString dataDirectory_;
   QSettings preferences_;
   QWebEngineProfile *profile_ = nullptr;
-  ArDaliBlockerService *blockerService_ = nullptr;
+  DaliNiraBlockerService *blockerService_ = nullptr;
   CredentialVaultManager *credentialVault_ = nullptr;
   TranslateService *translateService_ = nullptr;
   GeneralDownloadManager *generalDownloadManager_ = nullptr;

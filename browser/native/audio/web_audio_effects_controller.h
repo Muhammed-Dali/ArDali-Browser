@@ -80,7 +80,7 @@ class WebAudioEffectsController final : public QObject {
   double autoGainMaxGainDb() const { return autoGainMaxGainDb_; }
   QString autoGainSpeed() const { return autoGainSpeed_; }
   QString autoGainPreset() const { return autoGainPreset_; }
-  ardali::PerformancePolicyMode performancePolicyMode() const { return policyMode_; }
+  dalinira::PerformancePolicyMode performancePolicyMode() const { return policyMode_; }
   bool isPanelVisible() const { return panelVisible_; }
   QString activeSubpanelId() const { return activeSubpanelId_; }
   Status status() const { return status_; }
@@ -149,7 +149,7 @@ class WebAudioEffectsController final : public QObject {
   void setAutoGainMaxGainDb(double value);
   void applyAutoGainPreset(const QString &presetId);
   void resetAutoGain();
-  void setPerformancePolicyMode(ardali::PerformancePolicyMode mode);
+  void setPerformancePolicyMode(dalinira::PerformancePolicyMode mode);
   void setPanelVisible(bool visible, const QString &activeSubpanelId = QString());
   void applyToAllWebViews();
   QString injectionScript() const;
@@ -230,7 +230,7 @@ class WebAudioEffectsController final : public QObject {
   double autoGainMaxGainDb_ = 12.0;
   QString autoGainSpeed_ = QStringLiteral("medium");
   QString autoGainPreset_ = QStringLiteral("balanced");
-  ardali::PerformancePolicyMode policyMode_ = ardali::PerformancePolicyMode::Balanced;
+  dalinira::PerformancePolicyMode policyMode_ = dalinira::PerformancePolicyMode::Balanced;
   bool panelVisible_ = false;
   QString activeSubpanelId_;
   Status status_;

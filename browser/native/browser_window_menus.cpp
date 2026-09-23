@@ -24,7 +24,7 @@
 #include <QSettings>
 #include <QToolButton>
 
-using ardali::i18n::I18n;
+using dalinira::i18n::I18n;
 
 void BrowserWindow::showMainMenu() {
   QMenu menu(this);
@@ -263,7 +263,7 @@ void BrowserWindow::onTabContextMenuRequested(int index, const QPoint &globalPos
   // 1. Sağa yeni sekme
   QAction *newTabRight = menu.addAction(BrowserIcons::icon(BrowserIcon::NewTab), I18n::text(QStringLiteral("tab.context.new_tab_right"), QStringLiteral("Sağa yeni sekme")));
   connect(newTabRight, &QAction::triggered, this, [this, index] {
-    addNewTab(QUrl(QStringLiteral("ardali://newtab/")), index + 1);
+    addNewTab(QUrl(QStringLiteral("dalinira://newtab/")), index + 1);
   });
 
   // 2. Mevcut sekmeyle yeni bölünmüş görünüm
@@ -288,7 +288,7 @@ void BrowserWindow::onTabContextMenuRequested(int index, const QPoint &globalPos
       }
     });
   } else {
-    const auto groups = groupModel_ ? groupModel_->allGroups() : QList<ardali::desktop_tabs::TabGroup>{};
+    const auto groups = groupModel_ ? groupModel_->allGroups() : QList<dalinira::desktop_tabs::TabGroup>{};
     if (groups.isEmpty()) {
       QAction *newGroup = menu.addAction(BrowserIcons::icon(BrowserIcon::Grid), I18n::text(QStringLiteral("tab.context.add_to_new_group"), QStringLiteral("Sekmeyi yeni gruba ekle")));
       connect(newGroup, &QAction::triggered, this, [this, tabId] {

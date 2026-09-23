@@ -1,12 +1,12 @@
-# Contributing to ArDali Browser
+# Contributing to DaliNira Browser
 
-Thank you for your interest in contributing to ArDali Browser. This document outlines practical guidelines to help you understand the codebase, build and test changes, and submit high-quality contributions.
+Thank you for your interest in contributing to DaliNira Browser. This document outlines practical guidelines to help you understand the codebase, build and test changes, and submit high-quality contributions.
 
 ---
 
 ## 1. Development Environment
 
-ArDali Browser is a native C++20 desktop browser built on Qt 6 and Qt WebEngine:
+DaliNira Browser is a native C++20 desktop browser built on Qt 6 and Qt WebEngine:
 
 - **Operating System:** Linux (x86_64, Wayland / X11).
 - **C++ Standard:** C++20 (`gcc >= 11` or `clang >= 14`).
@@ -23,8 +23,8 @@ For distribution-specific package installation commands and dependencies, refer 
 
 ```bash
 # Clone the repository
-git clone https://github.com/Muhammed-Dali/ArDali-Browser.git
-cd ArDali-Browser
+git clone https://github.com/Muhammed-Dali/DaliNira-Browser.git
+cd DaliNira-Browser
 
 # Configure build with CMake (Release mode recommended for performance and full tests)
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -33,12 +33,12 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 
 # Launch the browser
-./build/ardali-browser
+./build/dalinira-browser
 ```
 
 To run with full terminal diagnostics and logging enabled:
 ```bash
-QTWEBENGINE_CHROMIUM_FLAGS="--enable-logging=stderr --v=1" ./build/ardali-browser
+QTWEBENGINE_CHROMIUM_FLAGS="--enable-logging=stderr --v=1" ./build/dalinira-browser
 ```
 
 ---
@@ -75,17 +75,17 @@ Every change must be validated against automated tests before opening a pull req
 While developing, run only the targeted test executable for the affected subsystem:
 ```bash
 # Example: Running password manager tests
-./build/ardali-browser-password-autofill-test
+./build/dalinira-browser-password-autofill-test
 
 # Example: Running download manager tests
-./build/ardali-browser-general-download-manager-test
+./build/dalinira-browser-general-download-manager-test
 ```
 
 CTest regexes and labels are also available, for example `ctest --test-dir
 build -L security --output-on-failure` and `ctest --test-dir build -R
 'tab|step5' --output-on-failure`. Tests must use temporary settings/profile
 paths and deterministic local fixtures; they must never modify a contributor's
-normal ArDali profile or require public internet access.
+normal DaliNira profile or require public internet access.
 
 ### Full CTest Suite
 Before submitting, run the complete test suite:
@@ -120,8 +120,8 @@ Changes to the following subsystems receive heightened security scrutiny:
 ## 6. Reporting Issues
 
 ### Bug Reports
-When submitting a bug report via [GitHub Issues](https://github.com/Muhammed-Dali/ArDali-Browser/issues), please include:
-- Exact ArDali Browser version / Git commit hash.
+When submitting a bug report via [GitHub Issues](https://github.com/Muhammed-Dali/DaliNira-Browser/issues), please include:
+- Exact DaliNira Browser version / Git commit hash.
 - Linux distribution, desktop environment (KDE Plasma, GNOME, etc.), and display server (Wayland / X11).
 - Clear, numbered reproduction steps.
 - Expected behavior vs actual behavior observed.

@@ -47,6 +47,10 @@ struct MediaFormatOption {
 
 struct MediaAnalysisResult {
   QUrl url;
+  QUrl adultProtectionContextUrl;
+  QVector<QUrl> adultProtectionUrls;
+  bool adultProtectionUrlsComplete = true;
+  bool adultContentProtectionEnabled = false;
   QString id;
   QString title;
   QString source;
@@ -58,6 +62,10 @@ struct MediaAnalysisResult {
 
 struct MediaDownloadRequest {
   QUrl url;
+  QUrl adultProtectionContextUrl;
+  QVector<QUrl> adultProtectionUrls;
+  bool adultProtectionUrlsComplete = true;
+  bool adultContentProtectionEnabled = false;
   QString title;
   QString source;
   QString thumbnailUrl;
@@ -128,11 +136,12 @@ class MediaDownloadService final : public QObject {
   QVector<MediaDownloadJob> jobs() const;
   bool analysisRunning() const;
 
-  bool analyze(const QUrl &url);
+  bool analyze(const QUrl &url, bool adultContentProtectionEnabled = false);
   void cancelAnalysis();
-  QUuid enqueue(const MediaDownloadRequest &request);
+  QUuid enqueue(const MediaDownloadRequest &request, QString *error = nullptr);
   bool cancel(const QUuid &id);
   QUuid retry(const QUuid &id);
+  QUuid retry(const QUuid &id, bool adultContentProtectionEnabled, QString *error = nullptr);
   bool remove(const QUuid &id);
 
  signals:
@@ -178,6 +187,7 @@ class MediaDownloadService final : public QObject {
   QByteArray analysisStdout_;
   QByteArray analysisStderr_;
   QUrl analysisUrl_;
+  bool analysisAdultContentProtectionEnabled_ = false;
   bool analysisWasCancelled_ = false;
   QProcess *downloadProcess_ = nullptr;
   QByteArray downloadStdoutBuffer_;

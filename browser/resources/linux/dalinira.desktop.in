@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=DaliNira
+GenericName=Web Browser
+Comment=DaliNira web browser
+Exec=@CMAKE_INSTALL_PREFIX@/bin/dalinira-browser %U
+TryExec=@CMAKE_INSTALL_PREFIX@/bin/dalinira-browser
+Icon=dalinira
+Terminal=false
+Categories=Network;WebBrowser;
+StartupWMClass=DaliNiraBrowser
+StartupNotify=true
+MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;

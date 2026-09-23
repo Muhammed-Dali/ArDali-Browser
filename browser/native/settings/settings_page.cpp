@@ -2,7 +2,7 @@
 #include "settings_page.h"
 
 #include "browser_profile_service.h"
-#include "ardali_blocker_service.h"
+#include "dalinira_blocker_service.h"
 #include "song_finder_settings.h"
 #include "tab_performance_manager.h"
 #include "system_memory_pressure_monitor.h"
@@ -57,7 +57,7 @@
 
 #include "settings_ui_helpers.h"
 
-using namespace ardali::settings_ui;
+using namespace dalinira::settings_ui;
 
 
 SettingsPage::SettingsPage(BrowserProfileService *profileService, Hooks hooks, QWidget *parent)
@@ -114,8 +114,8 @@ SettingsPage::SettingsPage(BrowserProfileService *profileService, Hooks hooks, Q
   addCategory(Category::Performance, BrowserIcon::Performance, QStringLiteral("Performans"), QStringLiteral("performans bellek RAM sekme tasarruf arka plan site istisna"), createPerformanceSection());
   addCategory(Category::Content, BrowserIcon::Content, QStringLiteral("İçerik"), QStringLiteral("site ayarları JavaScript resim medya popup"), createContentSection());
   addCategory(Category::Privacy, BrowserIcon::Privacy, QStringLiteral("Gizlilik ve güvenlik"), QStringLiteral("çerez cache önbellek izleme izin URL"), createPrivacySection());
-  addCategory(Category::Blocker, BrowserIcon::Privacy, QStringLiteral("ArDali Blocker"), QStringLiteral("ardali blocker reklam engelleyici filtreleme kalkan kurallar"), createBlockerSection());
-  addCategory(Category::Search, BrowserIcon::Search, QStringLiteral("Arama motoru"), QStringLiteral("öneri Google DuckDuckGo Brave Bing"), createSearchSection());
+  addCategory(Category::Blocker, BrowserIcon::Privacy, QStringLiteral("DaliNira Blocker"), QStringLiteral("dalinira blocker reklam engelleyici filtreleme kalkan kurallar"), createBlockerSection());
+  addCategory(Category::Search, BrowserIcon::Search, QStringLiteral("Arama motoru"), QStringLiteral("öneri Google DuckDuckGo Startpage Mojeek"), createSearchSection());
   addSidebarSeparator();
   addCategory(Category::Passwords, BrowserIcon::Password, QStringLiteral("Şifreler ve otomatik doldurma"), QStringLiteral("password manager parola yakında"), createPasswordsSection());
   addCategory(Category::Languages, BrowserIcon::Language, QStringLiteral("Diller"), QStringLiteral("dil language lisan dil seçimi arayüz dili uygulama dili Türkçe İngilizce Arapça yazım denetimi spellcheck çeviri translate"), createLanguagesSection());
@@ -125,10 +125,10 @@ SettingsPage::SettingsPage(BrowserProfileService *profileService, Hooks hooks, Q
   addCategory(Category::Accessibility, BrowserIcon::Accessibility, QStringLiteral("Erişilebilirlik"), QStringLiteral("klavye odak kontrast"), createAccessibilitySection());
   addSidebarSeparator();
   addCategory(Category::System, BrowserIcon::Settings, QStringLiteral("Sistem"), QStringLiteral("Chromium profil runtime"), createSystemSection());
-  addCategory(Category::Listening, BrowserIcon::Tools, QStringLiteral("Pulse"), QStringLiteral("ardali pulse şarkı bul shazam pulse dinle ses mikrofon müzik tanıma"), createListeningSection());
+  addCategory(Category::Listening, BrowserIcon::Tools, QStringLiteral("Pulse"), QStringLiteral("dalinira pulse şarkı bul shazam pulse dinle ses mikrofon müzik tanıma"), createListeningSection());
   addCategory(Category::Reset, BrowserIcon::Reset, QStringLiteral("Ayarları sıfırla"), QStringLiteral("varsayılan görünüm sık ziyaret"), createResetSection());
   addSidebarSeparator();
-  addCategory(Category::About, BrowserIcon::Info, QStringLiteral("ArDaliBrowser hakkında"), QStringLiteral("sürüm version build Qt WebEngine Chromium"), createAboutSection());
+  addCategory(Category::About, BrowserIcon::Info, QStringLiteral("DaliNiraBrowser hakkında"), QStringLiteral("sürüm version build Qt WebEngine Chromium"), createAboutSection());
 
   setStyleSheet(settingsStyleSheet());
   connect(sidebar_, &QListWidget::currentRowChanged, this, &SettingsPage::selectCategory);
@@ -136,7 +136,7 @@ SettingsPage::SettingsPage(BrowserProfileService *profileService, Hooks hooks, Q
     if (item) selectCategory(sidebar_->row(item));
   });
   connect(search_, &QLineEdit::textChanged, this, &SettingsPage::applyFilter);
-  connect(&ardali::i18n::LanguageManager::instance(), &ardali::i18n::LanguageManager::languageChanged,
+  connect(&dalinira::i18n::LanguageManager::instance(), &dalinira::i18n::LanguageManager::languageChanged,
           this, [this] { retranslateUi(); });
   if (profileService_) {
     connect(profileService_, &BrowserProfileService::historyChanged, this, [this] {
@@ -188,7 +188,7 @@ void SettingsPage::retranslateUi() {
   updateItem(Category::Performance, QStringLiteral("settings.category.performance"), QStringLiteral("Performans"));
   updateItem(Category::Content, QStringLiteral("settings.category.content"), QStringLiteral("İçerik"));
   updateItem(Category::Privacy, QStringLiteral("settings.category.privacy"), QStringLiteral("Gizlilik ve güvenlik"));
-  updateItem(Category::Blocker, QStringLiteral("settings.category.blocker"), QStringLiteral("ArDali Blocker"));
+  updateItem(Category::Blocker, QStringLiteral("settings.category.blocker"), QStringLiteral("DaliNira Blocker"));
   updateItem(Category::Search, QStringLiteral("settings.category.search"), QStringLiteral("Arama motoru"));
   updateItem(Category::Passwords, QStringLiteral("settings.category.passwords"), QStringLiteral("Şifreler ve otomatik doldurma"));
   updateItem(Category::Bookmarks, QStringLiteral("settings.category.bookmarks"), QStringLiteral("Yer işaretleri"));
@@ -199,14 +199,14 @@ void SettingsPage::retranslateUi() {
   updateItem(Category::System, QStringLiteral("settings.category.system"), QStringLiteral("Sistem"));
   updateItem(Category::Listening, QStringLiteral("settings.category.listening"), QStringLiteral("Pulse"));
   updateItem(Category::Reset, QStringLiteral("settings.category.reset"), QStringLiteral("Ayarları sıfırla"));
-  updateItem(Category::About, QStringLiteral("settings.category.about"), QStringLiteral("ArDaliBrowser hakkında"));
+  updateItem(Category::About, QStringLiteral("settings.category.about"), QStringLiteral("DaliNiraBrowser hakkında"));
 
   if (search_) {
     search_->setPlaceholderText(I18n::text(QStringLiteral("settings.search_placeholder"), QStringLiteral("Ayarlarda ara")));
   }
 
   if (uiLangCombo_) {
-    uiLangCombo_->setItemText(0, ardali::i18n::LanguageManager::instance().formatSystemLanguageLabel());
+    uiLangCombo_->setItemText(0, dalinira::i18n::LanguageManager::instance().formatSystemLanguageLabel());
   }
 }
 
@@ -278,7 +278,7 @@ void SettingsPage::selectCategory(int row) {
 }
 
 QWidget *SettingsPage::createStartupSection() {
-  Section section = makeSection(QStringLiteral("Başlangıç"), QStringLiteral("ArDaliBrowser açıldığında kaldığınız yerden devam edip etmeyeceğinizi seçin."));
+  Section section = makeSection(QStringLiteral("Başlangıç"), QStringLiteral("DaliNiraBrowser açıldığında kaldığınız yerden devam edip etmeyeceğinizi seçin."));
   auto *card = makeCard(section.page, QStringLiteral("BAŞLANGIÇ DAVRANIŞI"));
   auto *restore = new QCheckBox(card); restore->setAccessibleName(QStringLiteral("Başlangıçta son sekmeleri geri yükle"));
   restore->setChecked(QSettings().value(QStringLiteral("browser/restoreSession"), true).toBool());
@@ -313,25 +313,25 @@ QWidget *SettingsPage::createAppearanceSection() {
       QStringLiteral("Standart"),
       QString(),
       QStringLiteral("Klasik kavisli sekme yapısı ve araç çubuğuyla bütünleşen standart görünüm.") },
-    { QStringLiteral("ardali_signature"),
-      QStringLiteral("ArDali Kavisli (İmza Tasarım)"),
+    { QStringLiteral("dalinira_signature"),
+      QStringLiteral("DaliNira Kavisli (İmza Tasarım)"),
       QStringLiteral("Önerilen"),
-      QStringLiteral("Chrome sekme yapısı üzerine eklenmiş özel ArDali mavi ışıltısı.") },
+      QStringLiteral("Chrome sekme yapısı üzerine eklenmiş özel DaliNira mavi ışıltısı.") },
     { QStringLiteral("floating_pill"),
       QStringLiteral("Modern Kapsül (Yüzen Sekme)"),
       QStringLiteral("Modern"),
       QStringLiteral("Alt çubuğa bitişik olmak yerine hafif boşlukla yüzen, dört köşesi yuvarlatılmış modern kapsül görünümü.") },
-    { QStringLiteral("ardali_connected"),
-      QStringLiteral("ArDali Bağlantılı"),
+    { QStringLiteral("dalinira_connected"),
+      QStringLiteral("DaliNira Bağlantılı"),
       QStringLiteral("Varsayılan"),
-      QStringLiteral("Aktif sekmenin kavisli sağ ucunu tarayıcı yüzeyine bağlayan özgün ArDali tasarımı.") }
+      QStringLiteral("Aktif sekmenin kavisli sağ ucunu tarayıcı yüzeyine bağlayan özgün DaliNira tasarımı.") }
   };
 
   QSettings preferences;
-  const QString currentStyleStr = ardali::desktop_tabs::tabStylePreferenceValue(
-      ardali::desktop_tabs::tabStyleFromPreference(
+  const QString currentStyleStr = dalinira::desktop_tabs::tabStylePreferenceValue(
+      dalinira::desktop_tabs::tabStyleFromPreference(
           preferences.value(QStringLiteral("browser/tabStyle"),
-                            QStringLiteral("ardali_connected")).toString()));
+                            QStringLiteral("dalinira_connected")).toString()));
 
   QVector<QFrame *> styleFrameWidgets;
   QVector<QRadioButton *> styleRadioButtons;
@@ -504,7 +504,7 @@ QWidget *SettingsPage::createAppearanceSection() {
 QWidget *SettingsPage::createSearchSection() {
   Section section = makeSection(QStringLiteral("Arama motoru"), QStringLiteral("Adres çubuğu ve yeni sekmede kullanılan web aramasını yönetin."));
   auto *card = makeCard(section.page, QStringLiteral("ARAMA"));
-  auto *engine = new QComboBox(card); engine->setObjectName(QStringLiteral("settings-search-engine")); engine->setAccessibleName(QStringLiteral("Varsayılan arama motoru")); engine->addItems({QStringLiteral("DuckDuckGo"), QStringLiteral("Google"), QStringLiteral("Brave Search"), QStringLiteral("Bing")});
+  auto *engine = new QComboBox(card); engine->setObjectName(QStringLiteral("settings-search-engine")); engine->setAccessibleName(QStringLiteral("Varsayılan arama motoru")); engine->addItems({QStringLiteral("Google"), QStringLiteral("DuckDuckGo"), QStringLiteral("Startpage"), QStringLiteral("Mojeek")});
   if (profileService_) for (const auto &custom : profileService_->customSearchEngines()) engine->addItem(custom.name);
   engine->setCurrentText(hooks_.searchEngine ? hooks_.searchEngine() : QStringLiteral("DuckDuckGo"));
   addRow(card, settingRow(card, QStringLiteral("Varsayılan arama motoru"), QStringLiteral("Adres çubuğuna yazılan arama sorgularında kullanılacak servis."), engine, BrowserIcon::Search, true));
@@ -595,7 +595,7 @@ QWidget *SettingsPage::createPasswordsSection() {
   auto *open = new QPushButton(QStringLiteral("Şifre Yöneticisini Aç"), card);
   addRow(card, settingRow(card, QStringLiteral("Yerel şifre kasası"), QStringLiteral("Kimlik bilgileri yalnızca şifreli kasada tutulur; kasa her başlangıçta kilitlidir."), open, BrowserIcon::Password, true));
   section.layout->addWidget(card); section.layout->addStretch();
-  connect(open, &QPushButton::clicked, this, [this] { emit navigateRequested(QUrl(QStringLiteral("ardali://passwords"))); });
+  connect(open, &QPushButton::clicked, this, [this] { emit navigateRequested(QUrl(QStringLiteral("dalinira://passwords"))); });
   return section.page;
 }
 
@@ -954,7 +954,7 @@ QWidget *SettingsPage::createAccessibilitySection() {
 QWidget *SettingsPage::createSystemSection() {
   Section section = makeSection(QStringLiteral("Sistem"), QStringLiteral("Tarayıcı motoru ve profil çalışma bilgileri."));
   auto *card = makeCard(section.page, QStringLiteral("ÇALIŞMA ORTAMI"));
-  addRow(card, settingRow(card, QStringLiteral("Chromium profili"), QStringLiteral("Kalıcı çerezler, disk önbelleği ve site izinleri ArDaliBrowser profilinde saklanır."), nullptr, BrowserIcon::Settings, true));
+  addRow(card, settingRow(card, QStringLiteral("Chromium profili"), QStringLiteral("Kalıcı çerezler, disk önbelleği ve site izinleri DaliNiraBrowser profilinde saklanır."), nullptr, BrowserIcon::Settings, true));
   addRow(card, settingRow(card, QStringLiteral("Güvenlik politikası"), QStringLiteral("HTTP/HTTPS navigation ve DALI capability kontrolleri etkindir."), nullptr));
   section.layout->addWidget(card); section.layout->addStretch(); return section.page;
 }
@@ -983,7 +983,7 @@ QWidget *SettingsPage::createResetSection() {
   connect(resetPerf, &QPushButton::clicked, this, [this] {
     auto *pm = hooks_.performanceManager ? hooks_.performanceManager() : nullptr;
     if (pm) {
-      pm->setPolicyMode(ardali::PerformancePolicyMode::Balanced);
+      pm->setPolicyMode(dalinira::PerformancePolicyMode::Balanced);
       pm->setDiscardEnabled(true);
       pm->setSiteAllowlist({});
     } else {
@@ -998,7 +998,7 @@ QWidget *SettingsPage::createResetSection() {
 }
 
 QWidget *SettingsPage::createListeningSection() {
-  Section section = makeSection(QStringLiteral("ArDali Pulse Ayarları"), QStringLiteral("Shazam tabanlı müzik bulucu, ses yakalama ve hedef platform arama tercihleri."));
+  Section section = makeSection(QStringLiteral("DaliNira Pulse Ayarları"), QStringLiteral("Shazam tabanlı müzik bulucu, ses yakalama ve hedef platform arama tercihleri."));
 
   auto *settings = new SongFinderSettings(section.page);
 
@@ -1130,7 +1130,7 @@ QWidget *SettingsPage::createListeningSection() {
 }
 
 QWidget *SettingsPage::createAboutSection() {
-  Section section = makeSection(QStringLiteral("ArDaliBrowser hakkında"), QStringLiteral("Sürüm, geliştirici ve çalışma ortamı bilgileri."));
+  Section section = makeSection(QStringLiteral("DaliNiraBrowser hakkında"), QStringLiteral("Sürüm, geliştirici ve çalışma ortamı bilgileri."));
   auto *card = makeCard(section.page);
   auto *about = new QWidget(card);
   auto *layout = new QHBoxLayout(about);
@@ -1140,7 +1140,7 @@ QWidget *SettingsPage::createAboutSection() {
   auto *logo = new QLabel(about);
   logo->setPixmap(qApp->windowIcon().pixmap(72, 72));
   logo->setFixedSize(76, 76);
-  logo->setAccessibleName(QStringLiteral("ArDaliBrowser logosu"));
+  logo->setAccessibleName(QStringLiteral("DaliNiraBrowser logosu"));
 
   QString engine = QStringLiteral("Qt WebEngine (Chromium tabanlı)");
   if (profileService_ && profileService_->profile()) {
@@ -1149,16 +1149,16 @@ QWidget *SettingsPage::createAboutSection() {
   }
 
   auto *details = new QLabel(
-      QStringLiteral("<h2>ArDaliBrowser</h2>"
+      QStringLiteral("<h2>DaliNiraBrowser</h2>"
                      "<p style='line-height: 1.6; font-size: 13px;'>"
                      "<b>Sürüm:</b> %1<br>"
                      "<b>Tarayıcı motoru:</b> %2<br>"
                      "<b>Qt sürümü:</b> %3<br>"
                      "<b>Geliştirici:</b> Muhammed Dali<br>"
                      "<b>GitHub:</b> <a style='color: #58a6ff; text-decoration: none; font-weight: 600;' href='https://github.com/Muhammed-Dali'>github.com/Muhammed-Dali</a><br>"
-                     "<b>Proje Kaynak Kodu:</b> <a style='color: #58a6ff; text-decoration: none; font-weight: 600;' href='https://github.com/Muhammed-Dali/ArDali-Browser'>github.com/Muhammed-Dali/ArDali-Browser</a>"
+                     "<b>Proje Kaynak Kodu:</b> <a style='color: #58a6ff; text-decoration: none; font-weight: 600;' href='https://github.com/Muhammed-Dali/DaliNira-Browser'>github.com/Muhammed-Dali/DaliNira-Browser</a>"
                      "</p>")
-          .arg(QStringLiteral(ARDALI_BROWSER_VERSION), engine, QString::fromLatin1(qVersion())),
+          .arg(QStringLiteral(DALINIRA_BROWSER_VERSION), engine, QString::fromLatin1(qVersion())),
       about);
   details->setObjectName(QStringLiteral("settings-heading"));
   details->setWordWrap(true);
@@ -1199,7 +1199,7 @@ QWidget *SettingsPage::createAboutSection() {
     QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/Muhammed-Dali")));
   });
 
-  auto *repoBtn = new QPushButton(QStringLiteral("  ArDali-Browser GitHub Deposu"), linksCard);
+  auto *repoBtn = new QPushButton(QStringLiteral("  DaliNira-Browser GitHub Deposu"), linksCard);
   repoBtn->setIcon(BrowserIcons::icon(BrowserIcon::Save));
   repoBtn->setCursor(Qt::PointingHandCursor);
   repoBtn->setStyleSheet(QStringLiteral(
@@ -1216,7 +1216,7 @@ QWidget *SettingsPage::createAboutSection() {
       "  background-color: #388bfd;"
       "}"));
   connect(repoBtn, &QPushButton::clicked, this, [] {
-    QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/Muhammed-Dali/ArDali-Browser")));
+    QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/Muhammed-Dali/DaliNira-Browser")));
   });
 
   btnLayout->addWidget(profileBtn);

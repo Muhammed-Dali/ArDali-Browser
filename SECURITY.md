@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-ArDali Browser actively maintains and patches the latest stable release line.
+DaliNira Browser actively maintains and patches the latest stable release line.
 
 | Version | Supported          | Notes |
 | ------- | ------------------ | ----- |
@@ -11,7 +11,7 @@ ArDali Browser actively maintains and patches the latest stable release line.
 
 ## Security Architecture Overview
 
-ArDali Browser is engineered with a privacy- and security-first model:
+DaliNira Browser is engineered with a privacy- and security-first model:
 
 - **Local-Only Encrypted Vault (Schema v3):** Master password key derivation uses PBKDF2-HMAC-SHA256 (600,000 iterations). Records are encrypted with AES-256-GCM (12-byte random IVs, 16-byte authentication tags). No passwords or keys are ever sent to external cloud servers.
 - **Hardware-Bound Key Derivation (`DeviceKeyring`):** Vault wrap keys are bound to the local machine via the Linux FreeDesktop Secret Service (`org.freedesktop.secrets` / `libsecret-1`).
@@ -22,14 +22,14 @@ ArDali Browser is engineered with a privacy- and security-first model:
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in ArDali Browser, please **do not report it in a public issue, pull request, or public discussion**.
+If you discover a security vulnerability in DaliNira Browser, please **do not report it in a public issue, pull request, or public discussion**.
 
 ### How to Report Privately
 
 1. Use GitHub's private vulnerability reporting portal:
-   **[Submit a Security Advisory](https://github.com/Muhammed-Dali/ArDali-Browser/security/advisories/new)**
+   **[Submit a Security Advisory](https://github.com/Muhammed-Dali/DaliNira-Browser/security/advisories/new)**
 2. Provide a clear, detailed description including:
-   - Affected ArDali Browser version and Linux distribution.
+   - Affected DaliNira Browser version and Linux distribution.
    - Attack vector and reproduction steps or proof-of-concept.
    - Potential impact of the vulnerability.
    - Any proposed mitigations or patches.

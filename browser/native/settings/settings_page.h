@@ -15,7 +15,7 @@ class QListWidget;
 class QStackedWidget;
 class PrivacyDetailSubpage;
 
-namespace ardali {
+namespace dalinira {
 class TabPerformanceManager;
 }
 
@@ -52,7 +52,7 @@ class SettingsPage final : public QWidget {
     std::function<void()> refreshBookmarks;
     std::function<void()> refreshBookmarkBarVisibility;
     std::function<void()> refreshTabStyle;
-    std::function<ardali::TabPerformanceManager *()> performanceManager;
+    std::function<dalinira::TabPerformanceManager *()> performanceManager;
   };
 
   SettingsPage(BrowserProfileService *profileService, Hooks hooks, QWidget *parent = nullptr);

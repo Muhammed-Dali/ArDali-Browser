@@ -3,15 +3,15 @@
 #include <cstdio>
 #include <cstdlib>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 static std::atomic<uint64_t> s_sessionSequence{1};
 
 static bool isDiagnosticsEnabled() {
   static const bool enabled = qEnvironmentVariableIntValue(
-                                  "ARDALI_DESKTOP_TAB_DIAGNOSTICS") == 1 ||
+                                  "DALINIRA_DESKTOP_TAB_DIAGNOSTICS") == 1 ||
                               qEnvironmentVariableIntValue(
-                                  "ARDALI_TAB_DIAGNOSTICS") == 1;
+                                  "DALINIRA_TAB_DIAGNOSTICS") == 1;
   return enabled;
 }
 
@@ -89,4 +89,4 @@ void TabDragSession::setState(DragState state) {
   }
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

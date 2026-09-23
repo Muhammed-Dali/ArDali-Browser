@@ -5,7 +5,7 @@
 #include <QUrl>
 #include <algorithm>
 
-namespace ardali::core {
+namespace dalinira::core {
 
 struct NavigationCandidate {
   QUrl url;
@@ -131,4 +131,4 @@ struct CandidateScoringConfig {
   }
 };
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

@@ -346,7 +346,7 @@ void YtDlpUpdateManager::request(RequestKind kind, const QUrl &url, int redirect
   requestKind_ = kind;
   responseBytes_.clear();
   QNetworkRequest networkRequest(url);
-  networkRequest.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("ArDali-Browser/6.1 yt-dlp-manager"));
+  networkRequest.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("DaliNira-Browser/6.1 yt-dlp-manager"));
   networkRequest.setRawHeader("Accept", "application/vnd.github+json");
   networkRequest.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
   networkRequest.setAttribute(QNetworkRequest::CookieLoadControlAttribute, QNetworkRequest::Manual);

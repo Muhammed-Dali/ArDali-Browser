@@ -3,7 +3,7 @@
 #include <QString>
 #include <QStringList>
 
-namespace ardali {
+namespace dalinira {
 
 /**
  * @brief Categorized hardware video decoding capability on the current Linux host.
@@ -72,4 +72,4 @@ class WebEngineHardwareAcceleration {
   static void resetForTesting();
 };
 
-}  // namespace ardali
+}  // namespace dalinira

@@ -12,7 +12,7 @@
 #include "browser_profile_data_provider.h"
 #include "navigation_candidate.h"
 
-namespace ardali::core {
+namespace dalinira::core {
 
 class FrequentSitesCandidateProvider : public QObject, public INavigationCandidateProvider {
   Q_OBJECT
@@ -60,4 +60,4 @@ class FrequentSitesCandidateProvider : public QObject, public INavigationCandida
   mutable QHash<QString, QVector<IndexedFrequentItem>> tokenIndex_;
 };
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

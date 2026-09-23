@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_APPEARANCE_H_
-#define ARDALI_DESKTOP_TABS_TAB_APPEARANCE_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_APPEARANCE_H_
+#define DALINIRA_DESKTOP_TABS_TAB_APPEARANCE_H_
 
 #include <QColor>
 #include <QPainterPath>
@@ -8,7 +8,7 @@
 
 #include "tab_drag_types.h"
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 // Visual and layout values are kept together so painting, hit testing, and
 // dragging all derive from the same logical tab geometry. Values are Qt
@@ -44,11 +44,11 @@ const TabAppearance &tabAppearance(TabStyle style);
 QRectF tabSurfaceRect(const QRectF &logicalRect, TabStyle style,
                       bool activeOrDragged);
 
-// Chrome/ArDali active tabs use toolbar-connected lower shoulders; pill tabs
+// Chrome/DaliNira active tabs use toolbar-connected lower shoulders; pill tabs
 // remain a true rounded rectangle on all four sides.
 QPainterPath tabSurfacePath(const QRectF &logicalRect, int stripHeight,
                             TabStyle style, bool activeOrDragged);
 
-} // namespace ardali::desktop_tabs
+} // namespace dalinira::desktop_tabs
 
-#endif // ARDALI_DESKTOP_TABS_TAB_APPEARANCE_H_
+#endif // DALINIRA_DESKTOP_TABS_TAB_APPEARANCE_H_

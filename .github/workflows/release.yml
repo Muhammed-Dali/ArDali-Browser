@@ -44,7 +44,7 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -DCMAKE_INSTALL_BINDIR=lib/ardali-browser
+            -DCMAKE_INSTALL_BINDIR=lib/dalinira-browser
           cmake --build build --parallel 2
 
       - name: Test
@@ -62,9 +62,9 @@ jobs:
           stage="${GITHUB_WORKSPACE}/release-root"
           DESTDIR="${stage}" cmake --install build
           install -dm755 "${stage}/usr/bin"
-          ln -sf ../lib/ardali-browser/ardali-browser "${stage}/usr/bin/ardali-browser"
-          tar --zstd -C "${stage}" -cf "ardali-browser-${version}-linux-x86_64.tar.zst" usr
-          sha256sum "ardali-browser-${version}-linux-x86_64.tar.zst" > SHA256SUMS
+          ln -sf ../lib/dalinira-browser/dalinira-browser "${stage}/usr/bin/dalinira-browser"
+          tar --zstd -C "${stage}" -cf "dalinira-browser-${version}-linux-x86_64.tar.zst" usr
+          sha256sum "dalinira-browser-${version}-linux-x86_64.tar.zst" > SHA256SUMS
 
       - name: Publish GitHub release
         env:
@@ -72,7 +72,7 @@ jobs:
         run: |
           gh release create "${RELEASE_REF}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "ArDali Browser ${RELEASE_REF#v}" \
+            --title "DaliNira Browser ${RELEASE_REF#v}" \
             --notes-file "docs/RELEASE_NOTES_v${RELEASE_REF#v}.md" \
-            "ardali-browser-${RELEASE_REF#v}-linux-x86_64.tar.zst" \
+            "dalinira-browser-${RELEASE_REF#v}-linux-x86_64.tar.zst" \
             SHA256SUMS

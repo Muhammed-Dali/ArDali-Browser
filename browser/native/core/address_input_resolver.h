@@ -8,10 +8,10 @@
 
 #include "navigation_candidate.h"
 
-namespace ardali::core {
+namespace dalinira::core {
 
 enum class AddressInputClassification {
-  DirectUrl,       // Explicit allowed scheme (http, https, ardali)
+  DirectUrl,       // Explicit allowed scheme (http, https, dalinira)
   WellKnownAlias,  // Bootstrap site alias (e.g. amazon, youtube, github)
   Localhost,       // Localhost development server (localhost, 127.0.0.1, [::1])
   IpAddress,       // IPv4 or IPv6 address with optional port/path
@@ -99,4 +99,4 @@ class AddressInputResolver {
       int &outPort);
 };
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

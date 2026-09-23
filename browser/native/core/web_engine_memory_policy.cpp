@@ -4,12 +4,12 @@
 #include <QFileInfo>
 #include <QLibraryInfo>
 
-namespace ardali {
+namespace dalinira {
 
 namespace {
 
-constexpr auto kLauncherName = "ardali-webengine-process";
-constexpr auto kRealProcessEnvironment = "ARDALI_REAL_QTWEBENGINEPROCESS_PATH";
+constexpr auto kLauncherName = "dalinira-webengine-process";
+constexpr auto kRealProcessEnvironment = "DALINIRA_REAL_QTWEBENGINEPROCESS_PATH";
 
 QString executableCanonicalPath(const QString &path) {
   const QFileInfo file(path);
@@ -31,12 +31,12 @@ WebEngineMemoryPolicyStatus WebEngineMemoryPolicy::configureSubprocessLauncher(
 #else
   const QStringList launcherCandidates = {
       QDir(applicationDir).filePath(QString::fromLatin1(kLauncherName)),
-      QDir(applicationDir).filePath(QStringLiteral("../lib/ardali-browser/ardali-webengine-process")),
-      QDir(applicationDir).filePath(QStringLiteral("../bin/ardali-webengine-process")),
-      QStringLiteral("/usr/lib/ardali-browser/ardali-webengine-process"),
-      QStringLiteral("/usr/local/lib/ardali-browser/ardali-webengine-process"),
-      QStringLiteral("/usr/bin/ardali-webengine-process"),
-      QStringLiteral("/usr/local/bin/ardali-webengine-process")
+      QDir(applicationDir).filePath(QStringLiteral("../lib/dalinira-browser/dalinira-webengine-process")),
+      QDir(applicationDir).filePath(QStringLiteral("../bin/dalinira-webengine-process")),
+      QStringLiteral("/usr/lib/dalinira-browser/dalinira-webengine-process"),
+      QStringLiteral("/usr/local/lib/dalinira-browser/dalinira-webengine-process"),
+      QStringLiteral("/usr/bin/dalinira-webengine-process"),
+      QStringLiteral("/usr/local/bin/dalinira-webengine-process")
   };
 
   for (const QString &candidate : launcherCandidates) {
@@ -98,4 +98,4 @@ WebEngineMemoryPolicyStatus WebEngineMemoryPolicy::configureSubprocessLauncher(
 #endif
 }
 
-}  // namespace ardali
+}  // namespace dalinira

@@ -15,7 +15,7 @@
 
 int main(int argc, char **argv) {
   QApplication app(argc, argv);
-  app.setApplicationName(QStringLiteral("ArDaliContextMenuTest"));
+  app.setApplicationName(QStringLiteral("DaliNiraContextMenuTest"));
 
   QTemporaryDir root;
   QSettings::setDefaultFormat(QSettings::IniFormat);

@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
   emit background->page()->recommendedStateChanged(QWebEnginePage::LifecycleState::Frozen);
   const int scheduledDelay = performance->scheduledDeadlineDelayMs();
   assert(scheduledDelay > 0);
-  assert(scheduledDelay <= ardali::TabPerformanceManager::kMinimumDeadlineRetryMs + 200);
+  assert(scheduledDelay <= dalinira::TabPerformanceManager::kMinimumDeadlineRetryMs + 200);
 
   const quint64 checksBefore = performance->deadlineCheckCount();
   QElapsedTimer shortWindow;

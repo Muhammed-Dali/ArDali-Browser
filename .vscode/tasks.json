@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "ArDali: Build Browser",
+      "label": "DaliNira: Build Browser",
       "type": "shell",
       "command": "cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -B build -S . && cmake --build build",
       "group": {
@@ -12,10 +12,10 @@
       "problemMatcher": ["$gcc"]
     },
     {
-      "label": "ArDali: Run Browser",
+      "label": "DaliNira: Run Browser",
       "type": "shell",
-      "command": "./build/ardali-browser",
-      "dependsOn": ["ArDali: Build Browser"],
+      "command": "./build/dalinira-browser",
+      "dependsOn": ["DaliNira: Build Browser"],
       "problemMatcher": []
     },
     {
@@ -25,7 +25,7 @@
       "problemMatcher": []
     },
     {
-      "label": "ArDali: Run All CTests",
+      "label": "DaliNira: Run All CTests",
       "type": "shell",
       "command": "ctest --test-dir build --output-on-failure",
       "group": {

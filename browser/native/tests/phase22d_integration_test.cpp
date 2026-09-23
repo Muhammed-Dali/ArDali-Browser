@@ -27,7 +27,7 @@
 
 #include "browser_window.h"
 #include "downloads/download_toolbar_ui.h"
-#include "ardali_blocker_service.h"
+#include "dalinira_blocker_service.h"
 #include "new_tab_scheme.h"
 #include "search_suggestion_service.h"
 #include "suggestion_test_transport.h"
@@ -133,11 +133,11 @@ static void key(QWidget *widget, int code)
 
 int main(int argc, char **argv)
 {
-    registerArdaliUrlSchemes();
+    registerDaliNiraUrlSchemes();
 
     QApplication app(argc, argv);
-    app.setApplicationName("ArDaliPhase22dIntegration");
-    app.setOrganizationName("ArDaliTest");
+    app.setApplicationName("DaliNiraPhase22dIntegration");
+    app.setOrganizationName("DaliNiraTest");
 
     QTemporaryDir root;
 
@@ -265,12 +265,12 @@ int main(int argc, char **argv)
     assert(
         js(
             page,
-            "typeof window.ardaliSuggestionBridge")
+            "typeof window.daliniraSuggestionBridge")
             .toString() == "function");
 
     assert(
         !page
-             ->property("ardali-suggest-capability")
+             ->property("dalinira-suggest-capability")
              .toString()
              .isEmpty());
 
@@ -330,7 +330,7 @@ int main(int argc, char **argv)
         << " nativeFocus="
         << window.currentView()->hasFocus()
         << " nativeId="
-        << page->property("ardali-suggest-id").toInt()
+        << page->property("dalinira-suggest-id").toInt()
         << " js="
         << js(
                page,
@@ -348,7 +348,7 @@ int main(int argc, char **argv)
 
     const QString snapshotPath =
         qEnvironmentVariable(
-            "ARDALI_PHASE22D_SNAPSHOT");
+            "DALINIRA_PHASE22D_SNAPSHOT");
 
     if (!snapshotPath.isEmpty()) {
         assert(
@@ -384,7 +384,7 @@ int main(int argc, char **argv)
 
     js(
         page,
-        "location.href='ardali://suggest?"
+        "location.href='dalinira://suggest?"
         "op=consent&enabled=false&cap=wrong'");
 
     wait(100);
@@ -427,7 +427,7 @@ int main(int argc, char **argv)
     assert(
         waitForJs(
             selectionView->page(),
-            "typeof window.ardaliSuggestionBridge==='function'"
+            "typeof window.daliniraSuggestionBridge==='function'"
             "&&!!document.querySelector('#query')",
             10000));
 
@@ -452,7 +452,7 @@ int main(int argc, char **argv)
     // Arch's containerized WebEngine renderer may apply an already completed
     // suggestion response after the normal polling window.
     const int selectionBudgetMs =
-        qEnvironmentVariableIntValue("ARDALI_SLOW_WEBENGINE_CI") ? 60000 : 30000;
+        qEnvironmentVariableIntValue("DALINIRA_SLOW_WEBENGINE_CI") ? 60000 : 30000;
 
     const auto selectionRemaining = [&] {
         return qMax(
@@ -517,7 +517,7 @@ int main(int argc, char **argv)
             continue;
 
         // The fake reply has completed and the native completion has queued
-        // ardaliShowSuggestions. Let that renderer task run before DOM polling;
+        // daliniraShowSuggestions. Let that renderer task run before DOM polling;
         // redispatching the same value here would increment suggestionId and
         // deliberately make the completed response stale.
         if (selectionRemaining() > 0)
@@ -559,7 +559,7 @@ int main(int argc, char **argv)
             << " requestedUrl="
             << selectionView->page()->requestedUrl().toString().toStdString()
             << " nativeId="
-            << selectionView->page()->property("ardali-suggest-id").toInt()
+            << selectionView->page()->property("dalinira-suggest-id").toInt()
             << " js="
             << js(
                    selectionView->page(),
@@ -656,11 +656,11 @@ int main(int argc, char **argv)
     wait(400);
     auto *pointerView = window.currentView();
     assert(waitForJs(pointerView->page(),
-                     "typeof window.ardaliSuggestionBridge==='function'"
+                     "typeof window.daliniraSuggestionBridge==='function'"
                      "&&!!document.querySelector('#query')", 10000));
     assert(js(pointerView->page(),
        "(()=>{const query=document.querySelector('#query');query.focus();query.value='focus';"
-       "suggestionTypedValue='focus';window.ardaliShowSuggestions(suggestionId,'focus',["
+       "suggestionTypedValue='focus';window.daliniraShowSuggestions(suggestionId,'focus',["
        "{text:'focus result',url:'https://duckduckgo.com/?q=focus%20result',type:'search-history'}]);"
        "query.dispatchEvent(new Event('blur'));return document.activeElement===query})()").toBool());
     wait(325);
@@ -668,14 +668,14 @@ int main(int argc, char **argv)
               "!document.querySelector('#search-suggestions').hidden").toBool());
     assert(js(pointerView->page(),
        "(()=>{const query=document.querySelector('#query');query.focus();query.value='stable';"
-       "suggestionTypedValue='stable';window.ardaliShowSuggestions(suggestionId,'stable',["
+       "suggestionTypedValue='stable';window.daliniraShowSuggestions(suggestionId,'stable',["
        "{text:'stable result',url:'https://duckduckgo.com/?q=stable%20result',type:'search-history'}]);"
        "query.value='stable x';query.dispatchEvent(new Event('input',{bubbles:true}));"
        "const stayedOpen=!document.querySelector('#search-suggestions').hidden;"
        "clearTimeout(suggestionRequestTimer);return stayedOpen})()").toBool());
     assert(js(pointerView->page(),
        "(()=>{const query=document.querySelector('#query');query.focus();query.value='remove';"
-       "suggestionTypedValue='remove';window.ardaliShowSuggestions(suggestionId,'remove',["
+       "suggestionTypedValue='remove';window.daliniraShowSuggestions(suggestionId,'remove',["
        "{text:'remove me',url:'https://duckduckgo.com/?q=remove%20me',type:'search-history'}]);"
        "const remove=document.querySelector('.suggestion-remove');query.blur();"
        "if(document.querySelector('#search-suggestions').hidden)return false;"
@@ -691,7 +691,7 @@ int main(int argc, char **argv)
 
     assert(js(pointerView->page(),
        "(()=>{const query=document.querySelector('#query');query.focus();query.value='mouse';"
-       "suggestionTypedValue='mouse';window.ardaliShowSuggestions(suggestionId,'mouse',["
+       "suggestionTypedValue='mouse';window.daliniraShowSuggestions(suggestionId,'mouse',["
        "{text:'mouse choice',url:'https://duckduckgo.com/?q=mouse%20choice',type:'search-history'}]);"
        "const action=document.querySelector('.suggestion-action');query.blur();"
        "if(document.querySelector('#search-suggestions').hidden)return false;"

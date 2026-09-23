@@ -7,7 +7,7 @@
 
 #include "../core/web_engine_hardware_acceleration.h"
 
-using namespace ardali;
+using namespace dalinira;
 
 int main(int argc, char *argv[]) {
   QCoreApplication app(argc, argv);
@@ -77,12 +77,12 @@ int main(int argc, char *argv[]) {
   // 4. Disable by Environment Override
   {
     WebEngineHardwareAcceleration::resetForTesting();
-    qputenv("ARDALI_DISABLE_VAAPI", "1");
+    qputenv("DALINIRA_DISABLE_VAAPI", "1");
     const HardwareAccelerationStatus status = WebEngineHardwareAcceleration::detectCapability();
     assert(status.videoDecodeCapability == HardwareVideoDecodeCapability::DisabledByDriver);
     const QStringList flags = WebEngineHardwareAcceleration::standardHardwareFlags(status);
     assert(flags.isEmpty());
-    qunsetenv("ARDALI_DISABLE_VAAPI");
+    qunsetenv("DALINIRA_DISABLE_VAAPI");
   }
 
   // 5. Flag Merging and Deduplication

@@ -10,12 +10,12 @@
 #include <algorithm>
 #include <cstdio>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 namespace {
 // Sizing constants for the detached window (Chromium parity).
 // kDetachSizeRatio: detached window is this fraction of the source window size.
-// Chromium uses the "restored" (pre-maximised) window size directly; ArDali
+// Chromium uses the "restored" (pre-maximised) window size directly; DaliNira
 // defaults to 1200×800 which is visually too heavy for a freshly-torn tab, so
 // we cap at 75 %.
 constexpr double kDetachSizeRatio   = 0.75;
@@ -26,9 +26,9 @@ constexpr int    kDetachScreenMargin = 40;  // keep this far from screen edges
 
 static bool isDiagnosticsEnabled() {
   static const bool enabled = qEnvironmentVariableIntValue(
-                                  "ARDALI_DESKTOP_TAB_DIAGNOSTICS") == 1 ||
+                                  "DALINIRA_DESKTOP_TAB_DIAGNOSTICS") == 1 ||
                               qEnvironmentVariableIntValue(
-                                  "ARDALI_TAB_DIAGNOSTICS") == 1;
+                                  "DALINIRA_TAB_DIAGNOSTICS") == 1;
   return enabled;
 }
 
@@ -108,7 +108,7 @@ QWidget *DetachedTabWindowController::createDetachedWindow(
 
   if (isOriginMaximized) {
     // 1. Check if the window provides a restoredSize property or normalGeometry
-    const QVariant customRestored = originWindow->property("ardaliRestoredSize");
+    const QVariant customRestored = originWindow->property("daliniraRestoredSize");
     if (customRestored.isValid() && customRestored.toSize().isValid() &&
         customRestored.toSize().width() >= 600 && customRestored.toSize().height() >= 400) {
       targetSize = customRestored.toSize();
@@ -271,7 +271,7 @@ void DetachedTabWindowController::finalizeDetachedWindow() {
     if (qgetenv("QT_QPA_PLATFORM") != "offscreen") {
       detachedWindow_->setWindowOpacity(1.0);
     }
-    detachedWindow_->setProperty("ardaliDragCaptureShell", false);
+    detachedWindow_->setProperty("daliniraDragCaptureShell", false);
     detachedWindow_ = nullptr;
   }
   heldPointInWindow_ = {};
@@ -288,4 +288,4 @@ bool DetachedTabWindowController::verifyHeldPointInvariant(
   return delta.manhattanLength() <= 2;
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

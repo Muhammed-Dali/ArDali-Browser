@@ -1,11 +1,11 @@
-# ArDali Browser AdBlock Mimari Audit ve Legacy Parity Raporu
+# DaliNira Browser AdBlock Mimari Audit ve Legacy Parity Raporu
 
-Tarih: 2026-08-21  
-Source of truth: legacy `ArDali-WebMedia` checkout (salt okunur)  
-Qt hedefi: `browser/`  
+Tarih: 2026-08-21
+Source of truth: legacy `DaliNira-WebMedia` checkout (salt okunur)
+Qt hedefi: `browser/`
 Doğrulanan build: `browser/build/`
 
-## A. Eski ArDali-WebMedia Mimari Haritası
+## A. Eski DaliNira-WebMedia Mimari Haritası
 
 Legacy runtime zinciri:
 
@@ -22,7 +22,7 @@ Legacy runtime zinciri:
 11. Her karar tab/site bağlamına yazılır; sayaç, logger ve persistent istatistik state'i güncellenir.
 12. `adblock:refreshRulesets` uzaktan indirme yapmaz. Yerel `rulesetCache`, `strictblockCache` ve `scriptingCache` temizlenir, bundled plan yeniden parse/compile edilir.
 
-## B. Yeni Qt ArDali Browser Mimari Haritası
+## B. Yeni Qt DaliNira Browser Mimari Haritası
 
 Qt runtime zinciri:
 
@@ -31,7 +31,7 @@ Qt runtime zinciri:
 3. Engine custom allow/block kurallarını, ardından priority/action sıralı DNR adaylarını değerlendirir.
 4. Aday plan resource-type, request-domain/domain-anchor ve güvenli URL trigram indekslerinden seçilir; full ruleset request başına taranmaz.
 5. Interceptor block veya redirect uygular. Direct URL, query/URL transform, regex substitution, upgradeScheme ve bundled redirect data URL desteklenir.
-6. Strict main-frame eşleşmesi `ardali://newtab?strictblock=1` uyarısına gider; 15 dakikalık bypass bir sonraki navigation'a gerçekten izin verir.
+6. Strict main-frame eşleşmesi `dalinira://newtab?strictblock=1` uyarısına gider; 15 dakikalık bypass bir sonraki navigation'a gerçekten izin verir.
 7. `BrowserPage::acceptNavigationRequest` ana-frame navigation kabul edilmeden önce tek `prepareAdBlockScripts` yolunu çağırır.
 8. Bu yol dört isimli scripti kaldırıp yeni host için bir kez kurar: cosmetic, main scriptlet, isolated scriptlet, procedural.
 9. Host preflight, scriptlet bundle'larını yalnız ilgili hostname/subdomain/entity/regex eşleşmesinde inject eder. Generated bundle kendi include/exclude/args semantics'ini yürütür.
@@ -162,7 +162,7 @@ Crash riski taşıyan MV3 köprü üretim koduna alınmadı. Mevcut native inter
 - Procedural executor çalışma başına 12 ms deadline, 90 ms debounce ve attribute filter kullanıyor.
 - Custom procedural kurallar parse sırasında compile edilip host/exception planına ekleniyor; request hot path'inde tekrar parse edilmiyor.
 - YouTube dedicated cleanup 120 ms burst debounce kullanıyor; sürekli interval yok.
-- Canlı üç reload sonucu: her document'ta 1 ArDali observer, 1 cosmetic style, 0 generic procedural observer.
+- Canlı üç reload sonucu: her document'ta 1 DaliNira observer, 1 cosmetic style, 0 generic procedural observer.
 
 ## K. Değiştirilen Dosyalar
 
@@ -180,7 +180,7 @@ Crash riski taşıyan MV3 köprü üretim koduna alınmadı. Mevcut native inter
 - `browser/resources/adblock/**`
 - `browser/docs/ADBLOCK_AUDIT.md`
 
-Legacy `ArDali-WebMedia` checkout'unda hiçbir dosya değiştirilmedi. Sistem install veya desktop entry işlemi yapılmadı.
+Legacy `DaliNira-WebMedia` checkout'unda hiçbir dosya değiştirilmedi. Sistem install veya desktop entry işlemi yapılmadı.
 
 ## L. Test Sonuçları
 

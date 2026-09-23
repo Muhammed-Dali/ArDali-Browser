@@ -4,7 +4,7 @@
 
 #include <QUrlQuery>
 
-namespace ardali::core {
+namespace dalinira::core {
 
 bool BootstrapWellKnownSiteProvider::isTurkeyLocale(const QLocale &locale) {
   return locale.territory() == QLocale::Turkey ||
@@ -99,9 +99,11 @@ QVector<NavigationCandidate> BootstrapWellKnownSiteProvider::findCandidates(
 }
 
 QUrl AddressInputResolver::searchUrlForEngine(const QString &engine, const QString &queryText) {
-  QUrl url(QString::fromLatin1(searchEngineDefinition(engine).searchUrl));
+  const auto &def = searchEngineDefinition(engine);
+  QUrl url(QString::fromLatin1(def.searchUrl));
   QUrlQuery params;
-  params.addQueryItem(QStringLiteral("q"), queryText.trimmed());
+  const QString paramName = (def.queryParam && def.queryParam[0]) ? QString::fromLatin1(def.queryParam) : QStringLiteral("q");
+  params.addQueryItem(paramName, queryText.trimmed());
   url.setQuery(params);
   return url;
 }
@@ -121,7 +123,7 @@ bool AddressInputResolver::isAllowedExplicitScheme(const QString &scheme) {
   const QString s = scheme.trimmed().toLower();
   return s == QLatin1String("http") ||
          s == QLatin1String("https") ||
-         s == QLatin1String("ardali");
+         s == QLatin1String("dalinira");
 }
 
 bool AddressInputResolver::isLocalhostHost(const QString &host) {
@@ -286,7 +288,7 @@ AddressResolutionResult AddressInputResolver::resolve(
     }
   }
 
-  // 2. Explicit allowed scheme check (http://, https://, ardali://)
+  // 2. Explicit allowed scheme check (http://, https://, dalinira://)
   if (colonIndex > 0) {
     const QString possibleScheme = trimmed.left(colonIndex).toLower();
     if (isAllowedExplicitScheme(possibleScheme)) {
@@ -407,4 +409,4 @@ QUrl AddressInputResolver::resolveUrl(
   return res.url;
 }
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

@@ -300,9 +300,9 @@ QIcon BrowserIcons::icon(BrowserIcon id) {
 QIcon BrowserIcons::appIcon() {
   const QIcon windowIcon = QGuiApplication::windowIcon();
   if (!windowIcon.isNull()) return windowIcon;
-  QIcon icon(QStringLiteral(":/assets/icons/ardali-browser-256.png"));
-  if (icon.isNull()) icon = QIcon(QStringLiteral(":/icons/ardali-browser-256.png"));
-  if (icon.isNull()) icon = QIcon(QStringLiteral(":/assets/icons/ardali-browser-128.png"));
+  QIcon icon(QStringLiteral(":/assets/icons/dalinira-browser-256.png"));
+  if (icon.isNull()) icon = QIcon(QStringLiteral(":/icons/dalinira-browser-256.png"));
+  if (icon.isNull()) icon = QIcon(QStringLiteral(":/assets/icons/dalinira-browser-128.png"));
   return icon;
 }
 
@@ -388,7 +388,7 @@ QIcon BrowserIcons::youtubeMusicIcon() {
 }
 
 QIcon BrowserIcons::searchEngineIcon(const QString &engineName) {
-  QIcon engineIcon(ardali::core::searchEngineResourcePath(engineName));
+  QIcon engineIcon(dalinira::core::searchEngineResourcePath(engineName));
   if (!engineIcon.isNull()) return engineIcon;
 
   return icon(BrowserIcon::Search);

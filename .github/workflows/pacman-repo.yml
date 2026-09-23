@@ -80,21 +80,21 @@ jobs:
           install -dm755 "${out_dir}"
           cp -a website/. "${repo_root}/"
           install -Dm644 packaging/pacman/index.html "${repo_root}/pacman.html"
-          install -Dm644 packaging/pacman/ardali.repo "${repo_root}/ardali.repo"
-          pkg_path="$(find packaging/pacman -maxdepth 1 -type f -name 'ardali-[0-9]*-x86_64.pkg.tar.zst' -print -quit)"
+          install -Dm644 packaging/pacman/dalinira.repo "${repo_root}/dalinira.repo"
+          pkg_path="$(find packaging/pacman -maxdepth 1 -type f -name 'dalinira-[0-9]*-x86_64.pkg.tar.zst' -print -quit)"
           test -n "${pkg_path}"
           install -Dm644 "${pkg_path}" "${out_dir}/$(basename "${pkg_path}")"
-          repo-add "${out_dir}/ardali.db.tar.gz" "${out_dir}"/*.pkg.tar.zst
-          rm -f "${out_dir}/ardali.db" "${out_dir}/ardali.files"
-          cp -f "${out_dir}/ardali.db.tar.gz" "${out_dir}/ardali.db"
-          cp -f "${out_dir}/ardali.files.tar.gz" "${out_dir}/ardali.files"
+          repo-add "${out_dir}/dalinira.db.tar.gz" "${out_dir}"/*.pkg.tar.zst
+          rm -f "${out_dir}/dalinira.db" "${out_dir}/dalinira.files"
+          cp -f "${out_dir}/dalinira.db.tar.gz" "${out_dir}/dalinira.db"
+          cp -f "${out_dir}/dalinira.files.tar.gz" "${out_dir}/dalinira.files"
 
           # Keep both historical Pages server layouts working. Older users may
           # have configured the Pages root, while newer configs use /x86_64.
-          cp -f "${out_dir}/ardali.db.tar.gz" "${repo_root}/ardali.db.tar.gz"
-          cp -f "${out_dir}/ardali.db" "${repo_root}/ardali.db"
-          cp -f "${out_dir}/ardali.files.tar.gz" "${repo_root}/ardali.files.tar.gz"
-          cp -f "${out_dir}/ardali.files" "${repo_root}/ardali.files"
+          cp -f "${out_dir}/dalinira.db.tar.gz" "${repo_root}/dalinira.db.tar.gz"
+          cp -f "${out_dir}/dalinira.db" "${repo_root}/dalinira.db"
+          cp -f "${out_dir}/dalinira.files.tar.gz" "${repo_root}/dalinira.files.tar.gz"
+          cp -f "${out_dir}/dalinira.files" "${repo_root}/dalinira.files"
           cp -f "${pkg_path}" "${repo_root}/$(basename "${pkg_path}")"
 
       - name: Publish pacman repository release assets
@@ -105,14 +105,14 @@ jobs:
           set -euo pipefail
           out_dir="${GITHUB_WORKSPACE}/pacman-repo/x86_64"
           if ! gh release view pacman-repo >/dev/null 2>&1; then
-            gh release create pacman-repo --title "ArDali Pacman Repo" --notes "ArDali Browser pacman repository assets."
+            gh release create pacman-repo --title "DaliNira Pacman Repo" --notes "DaliNira Browser pacman repository assets."
           fi
           gh release upload pacman-repo \
-            "${out_dir}/ardali.db.tar.gz" \
-            "${out_dir}/ardali.db" \
-            "${out_dir}/ardali.files.tar.gz" \
-            "${out_dir}/ardali.files" \
-            "${out_dir}"/ardali-*.pkg.tar.zst \
+            "${out_dir}/dalinira.db.tar.gz" \
+            "${out_dir}/dalinira.db" \
+            "${out_dir}/dalinira.files.tar.gz" \
+            "${out_dir}/dalinira.files" \
+            "${out_dir}"/dalinira-*.pkg.tar.zst \
             --clobber
 
       - name: Upload GitHub Pages artifact

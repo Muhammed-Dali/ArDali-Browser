@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_LAYOUT_MODEL_H_
-#define ARDALI_DESKTOP_TABS_TAB_LAYOUT_MODEL_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_LAYOUT_MODEL_H_
+#define DALINIRA_DESKTOP_TABS_TAB_LAYOUT_MODEL_H_
 
 #include <QFont>
 #include <QFontMetrics>
@@ -12,7 +12,7 @@
 
 #include "tab_drag_types.h"
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 struct TabModelItem {
   uint64_t tabId = 0;
@@ -93,6 +93,6 @@ class TabLayoutModel {
   void computeSubRects(TabGeometry &geom, const QFontMetrics &fm) const;
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_LAYOUT_MODEL_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_LAYOUT_MODEL_H_

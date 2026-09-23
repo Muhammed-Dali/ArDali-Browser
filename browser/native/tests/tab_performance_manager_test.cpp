@@ -19,7 +19,7 @@ int main(int argc, char *argv[]) {
   assert(settingsRoot.isValid());
   QSettings::setDefaultFormat(QSettings::IniFormat);
   QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsRoot.path());
-  app.setOrganizationName(QStringLiteral("ArDaliTest"));
+  app.setOrganizationName(QStringLiteral("DaliNiraTest"));
   app.setApplicationName(QStringLiteral("TabPerformanceManagerTest"));
 
   QSettings testSettings;
@@ -27,7 +27,7 @@ int main(int argc, char *argv[]) {
   testSettings.remove(QStringLiteral("performance/discardEnabled"));
   testSettings.remove(QStringLiteral("performance/siteAllowlist"));
 
-  using namespace ardali;
+  using namespace dalinira;
 
   // Test 1: Monotonic time initialization and web tab registration
   {
@@ -401,7 +401,7 @@ int main(int argc, char *argv[]) {
     assert(viewB->page()->lifecycleState() == QWebEnginePage::LifecycleState::Frozen);
 
     const auto metaB = perf->metadata(idB);
-    assert(metaB.frozenByArDali == true);
+    assert(metaB.frozenByDaliNira == true);
     assert(metaB.lifecycleState == QWebEnginePage::LifecycleState::Frozen);
     assert(metaB.lastFreezeMonotonicMs > 0);
 
@@ -445,7 +445,7 @@ int main(int argc, char *argv[]) {
 
     const auto metaB = perf->metadata(idB);
     assert(metaB.visible == true);
-    assert(metaB.frozenByArDali == false);
+    assert(metaB.frozenByDaliNira == false);
     assert(metaB.lifecycleState == QWebEnginePage::LifecycleState::Active);
     assert(metaB.lastResumeMonotonicMs > 0);
     assert(viewB->url() == urlB);
@@ -869,14 +869,14 @@ int main(int argc, char *argv[]) {
     assert(perf->discardTab(id));
     assert(perf->isTabDiscarded(id));
     assert(discardedEmitted);
-    assert(perf->metadata(id).discardedByArDali);
+    assert(perf->metadata(id).discardedByDaliNira);
     assert(perf->metadata(id).discardCount == 1);
 
     // Restore tab
     assert(perf->resumeTab(id));
     assert(!perf->isTabDiscarded(id));
     assert(restoredEmitted);
-    assert(!perf->metadata(id).discardedByArDali);
+    assert(!perf->metadata(id).discardedByDaliNira);
     assert(perf->metadata(id).restoreCount == 1);
 
     delete view;

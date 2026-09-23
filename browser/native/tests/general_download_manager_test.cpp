@@ -154,7 +154,7 @@ class DownloadFixture final : public QObject {
       line = line.trimmed();
       const QByteArray lowered = line.toLower();
       if (lowered.startsWith("range:")) range = line.mid(6).trimmed();
-      if (lowered.startsWith("user-agent:") && line.contains("ArDaliFixture")) sawUserAgent = true;
+      if (lowered.startsWith("user-agent:") && line.contains("DaliNiraFixture")) sawUserAgent = true;
       if (lowered.startsWith("referer:") && line.contains("origin.test")) sawReferrer = true;
       if (lowered.startsWith("cookie:") && line.contains("session=fixture")) sawCookie = true;
     }
@@ -436,7 +436,7 @@ GeneralDownloadRequest requestFor(const QUrl &url, const QString &directory, con
   request.mimeType = QStringLiteral("application/octet-stream");
   request.expectedBytes = 9 * 1024 * 1024 + 137;
   request.connectionCount = 4;
-  request.userAgent = QByteArrayLiteral("ArDaliFixture/1.0");
+  request.userAgent = QByteArrayLiteral("DaliNiraFixture/1.0");
   request.referrer = QByteArrayLiteral("https://origin.test/page");
   request.cookies.append(QNetworkCookie(QByteArrayLiteral("session"), QByteArrayLiteral("fixture")));
   return request;
@@ -450,7 +450,7 @@ GeneralDownloadRequest largeRequestFor(const QUrl &url, const QString &directory
   request.mimeType = QStringLiteral("application/octet-stream");
   request.expectedBytes = 16 * 1024 * 1024 + 42;
   request.connectionCount = 8;
-  request.userAgent = QByteArrayLiteral("ArDaliFixture/1.0");
+  request.userAgent = QByteArrayLiteral("DaliNiraFixture/1.0");
   request.referrer = QByteArrayLiteral("https://origin.test/page");
   request.cookies.append(QNetworkCookie(QByteArrayLiteral("session"), QByteArrayLiteral("fixture")));
   return request;
@@ -589,7 +589,7 @@ int main(int argc, char **argv) {
     }
   });
   assert(waitFor([&] { return manager.job(cancelId).state == GeneralDownloadState::Cancelled; }));
-  assert(QDir(temporary.path()).entryList({QStringLiteral("*.ardali-*.part*")}, QDir::Files).isEmpty());
+  assert(QDir(temporary.path()).entryList({QStringLiteral("*.dalinira-*.part*")}, QDir::Files).isEmpty());
   const QUuid retriedId = manager.retry(cancelId);
   assert(!retriedId.isNull());
   assert(waitFor([&] { return manager.job(retriedId).state == GeneralDownloadState::Completed; }));
@@ -597,7 +597,7 @@ int main(int argc, char **argv) {
   const QUuid failedId = manager.enqueue(requestFor(fixture.url(QStringLiteral("/fail")), temporary.path(),
                                                     QStringLiteral("broken.pdf")));
   assert(waitFor([&] { return manager.job(failedId).state == GeneralDownloadState::Failed; }));
-  assert(QDir(temporary.path()).entryList({QStringLiteral("*.ardali-*.part*")}, QDir::Files).isEmpty());
+  assert(QDir(temporary.path()).entryList({QStringLiteral("*.dalinira-*.part*")}, QDir::Files).isEmpty());
 
   // Direct-offset preallocation, single-target file, no final merge regression test
   const QUuid directOffsetId = manager.enqueue(requestFor(fixture.url(QStringLiteral("/range?direct")), temporary.path(),
@@ -617,7 +617,7 @@ int main(int argc, char **argv) {
       assert(QFile::exists(tempPath));
       assert(QFileInfo(tempPath).size() == fixture.payload.size());
       // Doğrula: Ayrı .part dosyaları yok
-      assert(QDir(temporary.path()).entryList({QStringLiteral("*.ardali-*.part*")}, QDir::Files).isEmpty());
+      assert(QDir(temporary.path()).entryList({QStringLiteral("*.dalinira-*.part*")}, QDir::Files).isEmpty());
     }
     if (!directPauseScheduled && current.state == GeneralDownloadState::Downloading
         && current.downloadedBytes > 0) {

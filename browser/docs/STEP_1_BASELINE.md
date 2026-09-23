@@ -1,6 +1,6 @@
 # Step 1 — live-page transfer baseline
 
-The test executable `ardali-browser-state-test` proves only the mechanism used
+The test executable `dalinira-browser-state-test` proves only the mechanism used
 by the prototype: one `QWebEngineView` with the same `QWebEnginePage` is
 reparented from a main native host to a detached native host and back.
 
@@ -20,5 +20,5 @@ Run:
 
 ```bash
 cmake --build build
-./build/ardali-browser-state-test
+./build/dalinira-browser-state-test
 ```

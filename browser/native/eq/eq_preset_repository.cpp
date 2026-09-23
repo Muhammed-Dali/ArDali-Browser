@@ -21,13 +21,13 @@ QString presetRoot() {
   const QDir executable(QCoreApplication::applicationDirPath());
   const QString local = executable.filePath(QStringLiteral("eq-presets"));
   if (QFile::exists(local)) return local;
-  const QString share1 = executable.filePath(QStringLiteral("../share/ardali-browser/eq-presets"));
+  const QString share1 = executable.filePath(QStringLiteral("../share/dalinira-browser/eq-presets"));
   if (QFile::exists(share1)) return share1;
-  const QString share2 = executable.filePath(QStringLiteral("../../share/ardali-browser/eq-presets"));
+  const QString share2 = executable.filePath(QStringLiteral("../../share/dalinira-browser/eq-presets"));
   if (QFile::exists(share2)) return share2;
-  const QString sysShare = QStringLiteral("/usr/share/ardali-browser/eq-presets");
+  const QString sysShare = QStringLiteral("/usr/share/dalinira-browser/eq-presets");
   if (QFile::exists(sysShare)) return sysShare;
-  const QString localShare = QStringLiteral("/usr/local/share/ardali-browser/eq-presets");
+  const QString localShare = QStringLiteral("/usr/local/share/dalinira-browser/eq-presets");
   if (QFile::exists(localShare)) return localShare;
   return share1;
 }
@@ -130,7 +130,7 @@ bool EqPresetRepository::load() {
     if (preset.name.isEmpty()) preset.name = fileName.left(fileName.size() - 5).replace(QLatin1Char('_'), QLatin1Char(' '));
     preset.groups = groupsFor(preset); presets_.append(std::move(preset));
   }
-  QFile featured(QDir(dataPath_).filePath(QStringLiteral("ardali_presets.json")));
+  QFile featured(QDir(dataPath_).filePath(QStringLiteral("dalinira_presets.json")));
   if (featured.open(QIODevice::ReadOnly)) {
     for (const QJsonValue &entry : QJsonDocument::fromJson(featured.readAll()).object().value(QStringLiteral("presets")).toArray()) {
       const QJsonObject object = entry.toObject(); bool valid = false;

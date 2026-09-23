@@ -26,7 +26,7 @@
 #include "desktop_tabs/tab_manager.h"
 #include "desktop_tabs/tab_performance_manager.h"
 
-using namespace ardali;
+using namespace dalinira;
 
 namespace {
 
@@ -312,7 +312,7 @@ void testIsolatedRealDiscardAndRestoreLifecycle() {
 <!DOCTYPE html>
 <html>
 <head>
-  <title>ArDali Discard & Restore Test Fixture</title>
+  <title>DaliNira Discard & Restore Test Fixture</title>
   <style>
     body { font-family: sans-serif; height: 3000px; padding: 20px; }
     #editor { border: 1px solid #ccc; min-height: 50px; padding: 5px; }
@@ -341,8 +341,8 @@ void testIsolatedRealDiscardAndRestoreLifecycle() {
       if (el) el.innerText = 'Counter: ' + window.__testCounter;
     }, 50);
 
-    localStorage.setItem('ardali_local_storage_key', 'persisted_local_value');
-    sessionStorage.setItem('ardali_session_storage_key', 'persisted_session_value');
+    localStorage.setItem('dalinira_local_storage_key', 'persisted_local_value');
+    sessionStorage.setItem('dalinira_session_storage_key', 'persisted_session_value');
   </script>
 </body>
 </html>
@@ -353,13 +353,13 @@ void testIsolatedRealDiscardAndRestoreLifecycle() {
     loadFinished = ok;
   });
 
-  page->setHtml(fixtureHtml, QUrl(QStringLiteral("https://test.ardali.local/fixture")));
+  page->setHtml(fixtureHtml, QUrl(QStringLiteral("https://test.dalinira.local/fixture")));
   while (!loadFinished) {
     processEventsFor(50);
   }
 
   assert(page->lifecycleState() == QWebEnginePage::LifecycleState::Active);
-  assert(page->title() == QStringLiteral("ArDali Discard & Restore Test Fixture"));
+  assert(page->title() == QStringLiteral("DaliNira Discard & Restore Test Fixture"));
 
   runJsSync(page, "document.getElementById('testInput').value = 'user_typed_secret_input';");
   runJsSync(page, "document.getElementById('testArea').value = 'user_typed_multiline_text';");
@@ -373,8 +373,8 @@ void testIsolatedRealDiscardAndRestoreLifecycle() {
   const QString editorBefore = runJsSync(page, "document.getElementById('testEditor').innerText;").toString();
   const int counterBefore = runJsSync(page, "window.__testCounter;").toInt();
   const int scrollBefore = runJsSync(page, "window.scrollY;").toInt();
-  const QString localStoreBefore = runJsSync(page, "localStorage.getItem('ardali_local_storage_key');").toString();
-  const QString sessionStoreBefore = runJsSync(page, "sessionStorage.getItem('ardali_session_storage_key');").toString();
+  const QString localStoreBefore = runJsSync(page, "localStorage.getItem('dalinira_local_storage_key');").toString();
+  const QString sessionStoreBefore = runJsSync(page, "sessionStorage.getItem('dalinira_session_storage_key');").toString();
 
   assert(inputBefore == "user_typed_secret_input");
   assert(areaBefore == "user_typed_multiline_text");
@@ -419,8 +419,8 @@ void testIsolatedRealDiscardAndRestoreLifecycle() {
 
   const QString titleRestored = page->title();
   const QUrl urlRestored = page->url();
-  const QString localStoreRestored = runJsSync(page, "localStorage.getItem('ardali_local_storage_key');").toString();
-  const QString sessionStoreRestored = runJsSync(page, "sessionStorage.getItem('ardali_session_storage_key');").toString();
+  const QString localStoreRestored = runJsSync(page, "localStorage.getItem('dalinira_local_storage_key');").toString();
+  const QString sessionStoreRestored = runJsSync(page, "sessionStorage.getItem('dalinira_session_storage_key');").toString();
   const QString inputRestored = runJsSync(page, "document.getElementById('testInput') ? document.getElementById('testInput').value : '';").toString();
   const QString areaRestored = runJsSync(page, "document.getElementById('testArea') ? document.getElementById('testArea').value : '';").toString();
   const QString editorRestored = runJsSync(page, "document.getElementById('testEditor') ? document.getElementById('testEditor').innerText : '';").toString();
@@ -429,7 +429,7 @@ void testIsolatedRealDiscardAndRestoreLifecycle() {
   std::cout << "\n============================================================" << std::endl;
   std::cout << "   DISCARD & RESTORE EMPIRICAL STATE RETENTION MATRIX" << std::endl;
   std::cout << "============================================================" << std::endl;
-  std::cout << "1. URL:                   " << (urlRestored == QUrl("https://test.ardali.local/fixture") ? "RETAINED [OK]" : "LOST") << std::endl;
+  std::cout << "1. URL:                   " << (urlRestored == QUrl("https://test.dalinira.local/fixture") ? "RETAINED [OK]" : "LOST") << std::endl;
   std::cout << "2. Page Title:             " << (!titleRestored.isEmpty() ? "RETAINED [OK]" : "LOST") << std::endl;
   std::cout << "3. LocalStorage:           " << (localStoreRestored == "persisted_local_value" ? "RETAINED [OK]" : "LOST") << std::endl;
   std::cout << "4. SessionStorage:         " << (sessionStoreRestored == "persisted_session_value" ? "RETAINED [OK]" : "LOST") << std::endl;
@@ -465,7 +465,7 @@ void testBenchmarkScenarioA() {
     auto *v = new QWebEngineView();
     auto *p = new QWebEnginePage(v);
     v->setPage(p);
-    p->setHtml(testHtml, QUrl(QStringLiteral("https://benchmark.ardali.local/%1").arg(i)));
+    p->setHtml(testHtml, QUrl(QStringLiteral("https://benchmark.dalinira.local/%1").arg(i)));
     const auto id = tabManager.registerTab(v, &owner, false, QStringLiteral("Bench Tab %1").arg(i));
     views.push_back(v);
     ids.push_back(id);
@@ -586,13 +586,13 @@ void testRestoreLatency() {
 
   const QString testHtml = QStringLiteral("<!DOCTYPE html><html><body><h1>Latency Test Page</h1></body></html>");
   const auto id = tabManager.registerTab(view, &owner, false, QStringLiteral("Latency Tab"));
-  tabManager.updateUrl(id, QUrl(QStringLiteral("https://latency.ardali.local/")));
+  tabManager.updateUrl(id, QUrl(QStringLiteral("https://latency.dalinira.local/")));
 
   bool initialLoaded = false;
   QObject::connect(page, &QWebEnginePage::loadFinished, [&](bool ok) {
     if (!initialLoaded) initialLoaded = ok;
   });
-  page->setHtml(testHtml, QUrl(QStringLiteral("https://latency.ardali.local/")));
+  page->setHtml(testHtml, QUrl(QStringLiteral("https://latency.dalinira.local/")));
   while (!initialLoaded) {
     processEventsFor(30);
   }
@@ -647,9 +647,9 @@ void testRapidTabSwitching() {
     auto *p = new QWebEnginePage(v);
     v->setPage(p);
     p->setHtml(QStringLiteral("<html><body>Tab %1</body></html>").arg(i),
-               QUrl(QStringLiteral("https://rapid.ardali.local/%1").arg(i)));
+               QUrl(QStringLiteral("https://rapid.dalinira.local/%1").arg(i)));
     const auto id = tabManager.registerTab(v, &owner, false, QStringLiteral("Rapid Tab %1").arg(i));
-    tabManager.updateUrl(id, QUrl(QStringLiteral("https://rapid.ardali.local/%1").arg(i)));
+    tabManager.updateUrl(id, QUrl(QStringLiteral("https://rapid.dalinira.local/%1").arg(i)));
     views.push_back(v);
     ids.push_back(id);
   }
@@ -708,13 +708,13 @@ void testDiscardRestorePreviewBridge() {
       "<h1>Snapshot Test Header</h1><p>Test content for visual preview bridge.</p>"
       "</body></html>");
   const auto id = tabManager.registerTab(view, &owner, false, QStringLiteral("Snapshot Tab"));
-  tabManager.updateUrl(id, QUrl(QStringLiteral("https://snapshot.ardali.local/")));
+  tabManager.updateUrl(id, QUrl(QStringLiteral("https://snapshot.dalinira.local/")));
 
   bool initialLoaded = false;
   QObject::connect(page, &QWebEnginePage::loadFinished, [&](bool ok) {
     if (!initialLoaded) initialLoaded = ok;
   });
-  page->setHtml(testHtml, QUrl(QStringLiteral("https://snapshot.ardali.local/")));
+  page->setHtml(testHtml, QUrl(QStringLiteral("https://snapshot.dalinira.local/")));
   while (!initialLoaded) {
     processEventsFor(30);
   }
@@ -808,11 +808,11 @@ void testInternalSchemesAndNewTabExcludedFromLifecycle() {
 
   // 1. Test URL scheme helper
   assert(!TabPerformanceManager::isSupportedWebScheme(QUrl(QStringLiteral("about:blank"))));
-  assert(!TabPerformanceManager::isSupportedWebScheme(QUrl(QStringLiteral("ardali://newtab"))));
+  assert(!TabPerformanceManager::isSupportedWebScheme(QUrl(QStringLiteral("dalinira://newtab"))));
   assert(!TabPerformanceManager::isSupportedWebScheme(QUrl(QStringLiteral("chrome://settings"))));
   assert(!TabPerformanceManager::isSupportedWebScheme(QUrl(QStringLiteral("qrc:///assets/new-tab/index.html"))));
   assert(!TabPerformanceManager::isSupportedWebScheme(QUrl(QStringLiteral("file:///path/to/assets/new-tab/index.html"))));
-  assert(!TabPerformanceManager::isSupportedWebScheme(QUrl(QStringLiteral("http://ardali-browser.local/newtab"))));
+  assert(!TabPerformanceManager::isSupportedWebScheme(QUrl(QStringLiteral("http://dalinira-browser.local/newtab"))));
   assert(!TabPerformanceManager::isSupportedWebScheme(QUrl()));
   assert(TabPerformanceManager::isSupportedWebScheme(QUrl(QStringLiteral("https://example.com/"))));
   assert(TabPerformanceManager::isSupportedWebScheme(QUrl(QStringLiteral("http://news.ycombinator.com/"))));
@@ -822,7 +822,7 @@ void testInternalSchemesAndNewTabExcludedFromLifecycle() {
   auto *newTabPage = new QWebEnginePage(newTabView);
   newTabView->setPage(newTabPage);
   const auto newTabId = tabManager.registerTab(newTabView, &owner, false, QStringLiteral("Yeni Sekme"));
-  tabManager.updateUrl(newTabId, QUrl(QStringLiteral("ardali://newtab")));
+  tabManager.updateUrl(newTabId, QUrl(QStringLiteral("dalinira://newtab")));
 
   perf->setBackgroundFreezeDelayMs(0);
   perf->setBackgroundDiscardDelayMs(0);
@@ -876,7 +876,7 @@ int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
 
   std::cout << "============================================================" << std::endl;
-  std::cout << "   ArDali Performance Phase 2C-2 Discard & Benchmark Harness" << std::endl;
+  std::cout << "   DaliNira Performance Phase 2C-2 Discard & Benchmark Harness" << std::endl;
   std::cout << "============================================================" << std::endl;
 
   testSiteAllowlistMatching();

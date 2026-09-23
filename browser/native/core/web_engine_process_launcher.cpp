@@ -9,19 +9,19 @@
 
 namespace {
 
-constexpr auto kRealProcessEnvironment = "ARDALI_REAL_QTWEBENGINEPROCESS_PATH";
+constexpr auto kRealProcessEnvironment = "DALINIRA_REAL_QTWEBENGINEPROCESS_PATH";
 
 }  // namespace
 
 int main(int argc, char *argv[]) {
   const char *configuredPath = std::getenv(kRealProcessEnvironment);
   if (configuredPath == nullptr || configuredPath[0] != '/') {
-    std::fputs("ArDali: invalid QtWebEngineProcess path\n", stderr);
+    std::fputs("DaliNira: invalid QtWebEngineProcess path\n", stderr);
     return 127;
   }
   const std::string realProcessPath(configuredPath);
   if (access(realProcessPath.c_str(), X_OK) != 0) {
-    std::fprintf(stderr, "ArDali: QtWebEngineProcess is not executable: %s\n", std::strerror(errno));
+    std::fprintf(stderr, "DaliNira: QtWebEngineProcess is not executable: %s\n", std::strerror(errno));
     return 127;
   }
 
@@ -29,7 +29,7 @@ int main(int argc, char *argv[]) {
   // the policy from the zygote; the browser process remains unrestricted.
   if (setenv("MALLOC_ARENA_MAX", "2", 1) != 0
       || setenv("MALLOC_TRIM_THRESHOLD_", "131072", 1) != 0) {
-    std::fprintf(stderr, "ArDali: failed to apply child allocator policy: %s\n", std::strerror(errno));
+    std::fprintf(stderr, "DaliNira: failed to apply child allocator policy: %s\n", std::strerror(errno));
     return 127;
   }
   unsetenv(kRealProcessEnvironment);
@@ -42,6 +42,6 @@ int main(int argc, char *argv[]) {
   childArguments.push_back(nullptr);
 
   execv(realProcessPath.c_str(), childArguments.data());
-  std::fprintf(stderr, "ArDali: failed to launch QtWebEngineProcess: %s\n", std::strerror(errno));
+  std::fprintf(stderr, "DaliNira: failed to launch QtWebEngineProcess: %s\n", std::strerror(errno));
   return 127;
 }

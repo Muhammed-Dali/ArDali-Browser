@@ -14,8 +14,8 @@
 #include "i18n/i18n.h"
 #include "i18n/language_manager.h"
 
-using ardali::i18n::LanguageManager;
-using ardali::i18n::I18n;
+using dalinira::i18n::LanguageManager;
+using dalinira::i18n::I18n;
 
 #include <QApplication>
 #include <QHBoxLayout>
@@ -76,10 +76,11 @@ using ardali::i18n::I18n;
 #include "core/history_candidate_provider.h"
 #include "core/bookmark_candidate_provider.h"
 #include "core/frequent_sites_candidate_provider.h"
+#include "core/adult_content_protection.h"
 #include "newtab/new_tab_html.h"
 #include "newtab/new_tab_background_store.h"
 #include "newtab/new_tab_scheme.h"
-#include "blocker/ardali_blocker_service.h"
+#include "blocker/dalinira_blocker_service.h"
 #include "passwords/credential_vault_manager.h"
 #include "passwords/credential_autofill_controller.h"
 #include "pulse/song_finder_settings_page.h"
@@ -112,7 +113,7 @@ QString navigationUrlKey(const QUrl &url) {
 bool isInternalOrNonWebUrl(const QUrl &url) {
   if (!url.isValid() || url.isEmpty()) return true;
   const QString scheme = url.scheme().toLower();
-  if (scheme == QLatin1String("ardali") ||
+  if (scheme == QLatin1String("dalinira") ||
       scheme == QLatin1String("about") ||
       scheme == QLatin1String("data") ||
       scheme == QLatin1String("file") ||
@@ -131,6 +132,8 @@ QString bookmarkDisplayName(const QUrl &url) {
   if (host.endsWith(QStringLiteral("wikipedia.org"))) return QStringLiteral("Wikipedia");
   if (host.endsWith(QStringLiteral("google.com"))) return QStringLiteral("Google");
   if (host.endsWith(QStringLiteral("duckduckgo.com"))) return QStringLiteral("DuckDuckGo");
+  if (host.endsWith(QStringLiteral("startpage.com"))) return QStringLiteral("Startpage");
+  if (host.endsWith(QStringLiteral("mojeek.com"))) return QStringLiteral("Mojeek");
   if (host.endsWith(QStringLiteral("facebook.com"))) return QStringLiteral("Facebook");
   if (host.endsWith(QStringLiteral("instagram.com"))) return QStringLiteral("Instagram");
   if (host.endsWith(QStringLiteral("openai.com")) || host.endsWith(QStringLiteral("chatgpt.com"))) return QStringLiteral("ChatGPT");
@@ -324,13 +327,13 @@ class BrowserWebPage final : public QWebEnginePage {
                                 const QString &message,
                                 int lineNumber,
                                 const QString &sourceID) override {
-    if (message.startsWith(QLatin1String("__ARDALI_MEDIA_CAPTURE__:"))) {
+    if (message.startsWith(QLatin1String("__DALINIRA_MEDIA_CAPTURE__:"))) {
       const bool v = message.contains(QLatin1String("V1"));
       const bool a = message.contains(QLatin1String("A1"));
       if (onMediaCaptureChanged_) onMediaCaptureChanged_(v, a);
       return;
     }
-    if (message.startsWith(QLatin1String("__ARDALI_ADBLOCK_HIT__:"))) {
+    if (message.startsWith(QLatin1String("__DALINIRA_ADBLOCK_HIT__:"))) {
       const QStringList parts = message.split(QLatin1Char(':'));
       quint64 count = 1;
       if (parts.size() > 1) {
@@ -344,7 +347,7 @@ class BrowserWebPage final : public QWebEnginePage {
         auto *blocker = window_->services().profileService ? window_->services().profileService->adBlockService() : nullptr;
         if (blocker) {
           const QString subType = parts.value(2);
-          blocker->reportBlockedEvent(tabId, ArDaliBlockType::Cosmetic, count, subType);
+          blocker->reportBlockedEvent(tabId, DaliNiraBlockType::Cosmetic, count, subType);
         }
       }
       return;
@@ -360,12 +363,12 @@ class BrowserWebPage final : public QWebEnginePage {
     if (isMainFrame && onMediaCaptureChanged_) {
       onMediaCaptureChanged_(false, false);
     }
-    if (url.scheme() == QLatin1String("ardali") && url.host() == QLatin1String("suggest")) {
+    if (url.scheme() == QLatin1String("dalinira") && url.host() == QLatin1String("suggest")) {
       const QUrlQuery params(url);
-      const QString capability = property("ardali-suggest-capability").toString();
+      const QString capability = property("dalinira-suggest-capability").toString();
       auto *view = qobject_cast<QWebEngineView *>(parent());
       auto *window = view ? qobject_cast<BrowserWindow *>(view->window()) : nullptr;
-      if (!isMainFrame || !isNewTabUrl(this->url()) || capability.isEmpty() ||
+      if (!isNewTabUrl(this->url()) || capability.isEmpty() ||
           params.queryItemValue(QStringLiteral("cap")) != capability || !window ||
           window->currentView() != view || profile() != window->services().profile || url.toString().size() > 4096)
         return false;
@@ -403,12 +406,11 @@ class BrowserWebPage final : public QWebEnginePage {
       }
       return false;
     }
-    if (url.scheme() == QLatin1String("ardali") && url.host() == QLatin1String("search-engine")) {
+    if (url.scheme() == QLatin1String("dalinira") && url.host() == QLatin1String("search-engine")) {
       const QString engine = QUrlQuery(url).queryItemValue(QStringLiteral("engine"));
-      const bool allowed = QStringList{QStringLiteral("Google"), QStringLiteral("DuckDuckGo"),
-          QStringLiteral("Brave Search"), QStringLiteral("Bing")}.contains(engine);
+      const bool allowed = QStringList{QStringLiteral("Google"), QStringLiteral("DuckDuckGo"), QStringLiteral("Startpage"), QStringLiteral("Mojeek")}.contains(engine);
       const QPointer<QWebEngineView> view(qobject_cast<QWebEngineView *>(parent()));
-      const QString capability = property("ardali-suggest-capability").toString();
+      const QString capability = property("dalinira-suggest-capability").toString();
       if (isMainFrame && isNewTabUrl(this->url()) && allowed && view && !capability.isEmpty() &&
           QUrlQuery(url).queryItemValue(QStringLiteral("cap")) == capability) {
         QMetaObject::invokeMethod(view, [view, engine] {
@@ -418,7 +420,7 @@ class BrowserWebPage final : public QWebEnginePage {
       }
       return false;
     }
-    if (url.scheme() == QLatin1String("ardali") && url.host() == QLatin1String("card-settings")) {
+    if (url.scheme() == QLatin1String("dalinira") && url.host() == QLatin1String("card-settings")) {
       const QUrlQuery q(url);
       const bool downloads = q.queryItemValue(QStringLiteral("downloads")) == QLatin1String("1");
       const bool blocked = q.queryItemValue(QStringLiteral("blocked")) == QLatin1String("1");
@@ -426,7 +428,7 @@ class BrowserWebPage final : public QWebEnginePage {
       if (mode != QLatin1String("session") && mode != QLatin1String("all_time")) mode = QStringLiteral("all_time");
 
       const QPointer<QWebEngineView> view(qobject_cast<QWebEngineView *>(parent()));
-      const QString capability = property("ardali-suggest-capability").toString();
+      const QString capability = property("dalinira-suggest-capability").toString();
       if (isMainFrame && isNewTabUrl(this->url()) && view && !capability.isEmpty() &&
           q.queryItemValue(QStringLiteral("cap")) == capability) {
         QMetaObject::invokeMethod(view, [view, downloads, blocked, mode] {
@@ -444,10 +446,10 @@ class BrowserWebPage final : public QWebEnginePage {
       }
       return false;
     }
-    if (url.scheme() == QLatin1String("ardali") && url.host() == QLatin1String("newtab-background")) {
+    if (url.scheme() == QLatin1String("dalinira") && url.host() == QLatin1String("newtab-background")) {
       const QUrlQuery query(url);
       const QString command = query.queryItemValue(QStringLiteral("op"));
-      const QString capability = property("ardali-suggest-capability").toString();
+      const QString capability = property("dalinira-suggest-capability").toString();
       auto *view = qobject_cast<QWebEngineView *>(parent());
       auto *window = view ? qobject_cast<BrowserWindow *>(view->window()) : nullptr;
       if (isMainFrame && isNewTabUrl(this->url()) && view && window &&
@@ -466,11 +468,11 @@ class BrowserWebPage final : public QWebEnginePage {
       }
       return false;
     }
-    if (isMainFrame && url.scheme().compare(QLatin1String("ardali"), Qt::CaseInsensitive) == 0 &&
+    if (isMainFrame && url.scheme().compare(QLatin1String("dalinira"), Qt::CaseInsensitive) == 0 &&
         url.host().compare(QLatin1String("navigate"), Qt::CaseInsensitive) == 0) {
-      // 1. Strict origin validation: Only ardali://newtab or ardali://newtab/ is permitted
+      // 1. Strict origin validation: Only dalinira://newtab or dalinira://newtab/ is permitted
       const QUrl sourceUrl = this->url();
-      const QString capability = property("ardali-suggest-capability").toString();
+      const QString capability = property("dalinira-suggest-capability").toString();
       const bool trustedSource = isNewTabUrl(sourceUrl) && !capability.isEmpty() &&
           QUrlQuery(url).queryItemValue(QStringLiteral("cap")) == capability;
       if (!trustedSource) {
@@ -492,11 +494,14 @@ class BrowserWebPage final : public QWebEnginePage {
         validatedEngine = QStringLiteral("Google");
       } else if (rawEngine.compare(QLatin1String("DuckDuckGo"), Qt::CaseInsensitive) == 0) {
         validatedEngine = QStringLiteral("DuckDuckGo");
+      } else if (rawEngine.compare(QLatin1String("Startpage"), Qt::CaseInsensitive) == 0) {
+        validatedEngine = QStringLiteral("Startpage");
+      } else if (rawEngine.compare(QLatin1String("Mojeek"), Qt::CaseInsensitive) == 0) {
+        validatedEngine = QStringLiteral("Mojeek");
       } else if (rawEngine.compare(QLatin1String("Brave Search"), Qt::CaseInsensitive) == 0 ||
-                 rawEngine.compare(QLatin1String("Brave"), Qt::CaseInsensitive) == 0) {
-        validatedEngine = QStringLiteral("Brave Search");
-      } else if (rawEngine.compare(QLatin1String("Bing"), Qt::CaseInsensitive) == 0) {
-        validatedEngine = QStringLiteral("Bing");
+                 rawEngine.compare(QLatin1String("Brave"), Qt::CaseInsensitive) == 0 ||
+                 rawEngine.compare(QLatin1String("Bing"), Qt::CaseInsensitive) == 0) {
+        validatedEngine = QStringLiteral("Google");
       } else if (window_) {
         validatedEngine = window_->currentSearchEngine();
       } else {
@@ -508,7 +513,7 @@ class BrowserWebPage final : public QWebEnginePage {
       if (view) {
         QMetaObject::invokeMethod(view, [view, rawQuery, validatedEngine, capability] {
           if (!view || !isNewTabUrl(view->url()) ||
-              view->page()->property("ardali-suggest-capability").toString() != capability) return;
+              view->page()->property("dalinira-suggest-capability").toString() != capability) return;
           auto *window = qobject_cast<BrowserWindow *>(view->window());
           if (window && window->currentView() == view && view->page()->profile() == window->services().profile)
             window->navigateFromUserInput(rawQuery, validatedEngine);
@@ -517,6 +522,21 @@ class BrowserWebPage final : public QWebEnginePage {
       return false;
     }
     if (isMainFrame) {
+      if (url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https")) {
+        auto *view = qobject_cast<QWebEngineView *>(parent());
+        auto *window = window_ ? window_.data() : (view ? qobject_cast<BrowserWindow *>(view->window()) : nullptr);
+        auto *profileService = window ? window->services().profileService : nullptr;
+        const bool adultProtection = profileService ? profileService->isAdultContentProtectionEnabled() : true;
+        if (adultProtection && dalinira::core::AdultContentProtectionService::instance().isBlocked(url)) {
+          const QPointer<BrowserWebPage> guardedPage(this);
+          QMetaObject::invokeMethod(this, [guardedPage] {
+            if (guardedPage) {
+              guardedPage->setUrl(QUrl(QStringLiteral("dalinira://blocked/adult")));
+            }
+          }, Qt::QueuedConnection);
+          return false;
+        }
+      }
       if (auto *view = qobject_cast<QWebEngineView *>(parent())) {
         if (auto *window = window_ ? window_.data() : qobject_cast<BrowserWindow *>(view->window())) {
           if ((url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https")) &&
@@ -535,14 +555,14 @@ class BrowserWebPage final : public QWebEnginePage {
     static const QString s_hookScript = QStringLiteral(R"JS(
 (function() {
   if (!window.location || (window.location.protocol !== 'http:' && window.location.protocol !== 'https:')) return;
-  if (window.__ardaliMediaHookInstalled) return;
-  window.__ardaliMediaHookInstalled = true;
+  if (window.__daliniraMediaHookInstalled) return;
+  window.__daliniraMediaHookInstalled = true;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
   var origGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
   var activeVideoTracks = 0;
   var activeAudioTracks = 0;
   function updateCapture() {
-    console.debug('__ARDALI_MEDIA_CAPTURE__:V' + (activeVideoTracks > 0 ? '1' : '0') + 'A' + (activeAudioTracks > 0 ? '1' : '0'));
+    console.debug('__DALINIRA_MEDIA_CAPTURE__:V' + (activeVideoTracks > 0 ? '1' : '0') + 'A' + (activeAudioTracks > 0 ? '1' : '0'));
   }
   navigator.mediaDevices.getUserMedia = function(constraints) {
     return origGetUserMedia(constraints).then(function(stream) {
@@ -586,7 +606,7 @@ class BrowserWebPage final : public QWebEnginePage {
 )JS");
 
     QWebEngineScript script;
-    script.setName(QStringLiteral("ardali-media-capture-hook"));
+    script.setName(QStringLiteral("dalinira-media-capture-hook"));
     script.setInjectionPoint(QWebEngineScript::DocumentCreation);
     script.setWorldId(QWebEngineScript::MainWorld);
     script.setRunsOnSubFrames(true);
@@ -753,7 +773,7 @@ class BrowserWebView final : public QWebEngineView {
     QObject::connect(searchAct, &QAction::triggered, [this, selectedText] {
       if (window_) {
         int nextSlot = window_->tabStrip() ? window_->tabStrip()->currentIndex() + 1 : -1;
-        window_->addNewTab(QUrl(QStringLiteral("ardali://newtab/")), nextSlot);
+        window_->addNewTab(QUrl(QStringLiteral("dalinira://newtab/")), nextSlot);
         window_->navigateFromUserInput(selectedText);
       }
     });
@@ -860,17 +880,17 @@ BrowserWindow::BrowserWindow(const BrowserServices &services, bool isCaptureShel
   resize(1200, 800);
   lastNormalSize_ = size();
   lastNormalGeometry_ = geometry();
-  setProperty("ardaliRestoredSize", lastNormalSize_);
+  setProperty("daliniraRestoredSize", lastNormalSize_);
 
   if (!services_.profile) {
     services_.profile = QWebEngineProfile::defaultProfile();
   }
 
-  auto composite = std::make_unique<ardali::core::CompositeNavigationCandidateProvider>(this);
-  composite->addProvider(std::make_shared<ardali::core::BookmarkCandidateProvider>(services_.profileService, services_.profileService, composite.get()));
-  composite->addProvider(std::make_shared<ardali::core::FrequentSitesCandidateProvider>(services_.profileService, services_.profileService, composite.get()));
-  composite->addProvider(std::make_shared<ardali::core::HistoryCandidateProvider>(services_.profileService, services_.profileService, composite.get()));
-  composite->addProvider(std::make_shared<ardali::core::BootstrapWellKnownSiteProvider>());
+  auto composite = std::make_unique<dalinira::core::CompositeNavigationCandidateProvider>(this);
+  composite->addProvider(std::make_shared<dalinira::core::BookmarkCandidateProvider>(services_.profileService, services_.profileService, composite.get()));
+  composite->addProvider(std::make_shared<dalinira::core::FrequentSitesCandidateProvider>(services_.profileService, services_.profileService, composite.get()));
+  composite->addProvider(std::make_shared<dalinira::core::HistoryCandidateProvider>(services_.profileService, services_.profileService, composite.get()));
+  composite->addProvider(std::make_shared<dalinira::core::BootstrapWellKnownSiteProvider>());
   candidateProvider_ = std::move(composite);
   autofillController_ = std::make_unique<CredentialAutofillController>(
       services_.profileService ? services_.profileService->credentialVault() : nullptr, this, this);
@@ -914,7 +934,7 @@ BrowserWindow::BrowserWindow(const BrowserServices &services, bool isCaptureShel
     connect(services_.profileService, &BrowserProfileService::downloadsChanged,
             this, &BrowserWindow::syncNewTabViews);
     if (auto *blocker = services_.profileService->blockerService()) {
-      connect(blocker, &ArDaliBlockerService::globalStatsChanged, this,
+      connect(blocker, &DaliNiraBlockerService::globalStatsChanged, this,
               [this](quint64 sessionBlocked, quint64 totalBlocked) {
         const QString script = newTabProtectionStatsUpdateScript(
             totalBlocked, services_.profileService->recentDownloadCount(), sessionBlocked);
@@ -928,7 +948,7 @@ BrowserWindow::BrowserWindow(const BrowserServices &services, bool isCaptureShel
   connect(&TabThrobber::instance(), &TabThrobber::throbberTick, this, &BrowserWindow::onThrobberTick);
 
   // Register in global registry for tab drag & attach
-  ardali::desktop_tabs::TabWindowRegistry::instance().registerWindow(this, tabStrip_);
+  dalinira::desktop_tabs::TabWindowRegistry::instance().registerWindow(this, tabStrip_);
 
   if (services_.privateProfileOwner) {
     // Keep the shared private profile alive until this window's page children
@@ -937,7 +957,7 @@ BrowserWindow::BrowserWindow(const BrowserServices &services, bool isCaptureShel
     connect(lifetime, &QObject::destroyed, [owner = services_.privateProfileOwner] {});
   }
   if (isCaptureShell_) {
-    setProperty("ardaliDragCaptureShell", true);
+    setProperty("daliniraDragCaptureShell", true);
   }
 
   if (qApp) {
@@ -979,11 +999,11 @@ BrowserWindow::~BrowserWindow() {
   pendingPermissionQueue_.clear();
 #endif
   tabSessionGrants_.clear();
-  ardali::desktop_tabs::TabWindowRegistry::instance().unregisterWindow(this);
+  dalinira::desktop_tabs::TabWindowRegistry::instance().unregisterWindow(this);
 }
 
 void BrowserWindow::setupUi() {
-  using Metrics = ardali::ui::BrowserChromeMetrics;
+  using Metrics = dalinira::ui::BrowserChromeMetrics;
 
   auto *central = new QWidget(this);
   central->setObjectName(QStringLiteral("centralRoot"));
@@ -1043,7 +1063,7 @@ void BrowserWindow::setupUi() {
 
   auto *newTabShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_T), this);
   connect(newTabShortcut, &QShortcut::activated, this, [this] {
-    addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+    addNewTab(QUrl(QStringLiteral("dalinira://newtab/")));
   });
 
   auto *newWindowShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_N), this);
@@ -1120,12 +1140,12 @@ void BrowserWindow::setupUi() {
   connect(fullScreenShortcut, &QShortcut::activated, this, &BrowserWindow::toggleBrowserFullScreen);
 
   // Tab Strip (Chromium TabStripWidget)
-  tabStrip_ = new ardali::desktop_tabs::TabStripWidget(topBar_);
+  tabStrip_ = new dalinira::desktop_tabs::TabStripWidget(topBar_);
   tabStrip_->setObjectName(QStringLiteral("tabStrip"));
   tabStrip_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  groupModel_ = new ardali::desktop_tabs::TabGroupModel(this);
+  groupModel_ = new dalinira::desktop_tabs::TabGroupModel(this);
   tabStrip_->setGroupModel(groupModel_);
-  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::groupChipClicked,
+  connect(tabStrip_, &dalinira::desktop_tabs::TabStripWidget::groupChipClicked,
           this, [this](const QUuid &groupId, const QPoint &globalPos) {
     showTabGroupPopup(groupId, globalPos);
   });
@@ -1251,7 +1271,7 @@ void BrowserWindow::setupUi() {
 
   // AdBlock Shield Button
   auto *adblock = services_.profileService ? services_.profileService->adBlockService() : nullptr;
-  adBlockShield_ = new ArDaliBlockerShieldButton(adblock, navBar_);
+  adBlockShield_ = new DaliNiraBlockerShieldButton(adblock, navBar_);
   configureNavigationButton(adBlockShield_);
   navLayout->addWidget(adBlockShield_);
 
@@ -1343,29 +1363,29 @@ void BrowserWindow::setupUi() {
   connect(omnibox_, &QLineEdit::returnPressed, this, &BrowserWindow::onOmniboxReturnPressed);
 
   // Connect feature buttons
-  connect(adBlockShield_, &ArDaliBlockerShieldButton::openSettingsRequested, this, [this] {
-    showArDaliBlockerSettings(ArDaliBlockerPage::Tab::Settings);
+  connect(adBlockShield_, &DaliNiraBlockerShieldButton::openSettingsRequested, this, [this] {
+    showDaliNiraBlockerSettings(DaliNiraBlockerPage::Tab::Settings);
   });
-  connect(adBlockShield_, &ArDaliBlockerShieldButton::openRulesetsRequested, this, [this] {
-    showArDaliBlockerSettings(ArDaliBlockerPage::Tab::Rulesets);
+  connect(adBlockShield_, &DaliNiraBlockerShieldButton::openRulesetsRequested, this, [this] {
+    showDaliNiraBlockerSettings(DaliNiraBlockerPage::Tab::Rulesets);
   });
-  connect(adBlockShield_, &ArDaliBlockerShieldButton::openLoggerRequested, this, [this] {
-    showArDaliBlockerSettings(ArDaliBlockerPage::Tab::Logger);
+  connect(adBlockShield_, &DaliNiraBlockerShieldButton::openLoggerRequested, this, [this] {
+    showDaliNiraBlockerSettings(DaliNiraBlockerPage::Tab::Logger);
   });
-  connect(adBlockShield_, &ArDaliBlockerShieldButton::reloadRequested, this, [this] {
+  connect(adBlockShield_, &DaliNiraBlockerShieldButton::reloadRequested, this, [this] {
     if (auto *view = currentView()) {
       prepareAdBlockScripts(view->page(), view->url(), true);
       view->reload();
     }
   });
   if (adblock) {
-    connect(adblock->settings(), &ArDaliBlockerSettings::settingsChanged, this, [this] {
+    connect(adblock->settings(), &DaliNiraBlockerSettings::settingsChanged, this, [this] {
       for (const auto &tab : std::as_const(tabs_)) {
         if (tab.view && (tab.view->url().scheme() == QLatin1String("http") || tab.view->url().scheme() == QLatin1String("https")))
           prepareAdBlockScripts(tab.view->page(), tab.view->url(), true);
       }
     });
-    connect(adblock, &ArDaliBlockerService::tabStatsChanged, this, [this](quint64 tabId, const TabBlockerStats &stats) {
+    connect(adblock, &DaliNiraBlockerService::tabStatsChanged, this, [this](quint64 tabId, const TabBlockerStats &stats) {
       if (auto *view = currentView()) {
         const quint64 currentId = reinterpret_cast<quintptr>(view);
         if (tabId == currentId && adBlockShield_) {
@@ -1379,13 +1399,13 @@ void BrowserWindow::setupUi() {
             const quint64 total = stats.totalBlocked();
             adBlockShield_->setBlockedCount(total);
             adBlockShield_->setToolTip(total > 0
-                ? QStringLiteral("ArDali Koruma: %1 (%2 öğe engellendi)").arg(view->url().host()).arg(total)
-                : QStringLiteral("ArDali Koruma: %1 (Etkin)").arg(view->url().host()));
+                ? QStringLiteral("DaliNira Koruma: %1 (%2 öğe engellendi)").arg(view->url().host()).arg(total)
+                : QStringLiteral("DaliNira Koruma: %1 (Etkin)").arg(view->url().host()));
           }
         }
       }
     });
-    connect(adblock, &ArDaliBlockerService::autoReloadRequested, this, [this] {
+    connect(adblock, &DaliNiraBlockerService::autoReloadRequested, this, [this] {
       if (auto *view = currentView()) {
         prepareAdBlockScripts(view->page(), view->url(), true);
         view->reload();
@@ -1430,7 +1450,7 @@ void BrowserWindow::setupUi() {
     if (downloadPopup_->isVisible()) {
       downloadPopup_->hide();
     } else {
-      const QUrl activeUrl = (currentView() && !isNewTabUrl(currentView()->url()) && currentView()->url().scheme() != QLatin1String("ardali"))
+      const QUrl activeUrl = (currentView() && !isNewTabUrl(currentView()->url()) && currentView()->url().scheme() != QLatin1String("dalinira"))
           ? currentView()->url() : lastActiveWebUrl_;
       const bool pageHasMedia = currentView() && currentView()->page() && currentView()->page()->recentlyAudible();
       if (!activeUrl.isEmpty() && MediaPlatformRegistry::shouldAutoAnalyzeMedia(activeUrl, pageHasMedia)) {
@@ -1607,38 +1627,38 @@ void BrowserWindow::setupStyle() {
 }
 
 void BrowserWindow::setupTabStripSignals() {
-  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::newTabRequested, this, [this] {
-    addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+  connect(tabStrip_, &dalinira::desktop_tabs::TabStripWidget::newTabRequested, this, [this] {
+    addNewTab(QUrl(QStringLiteral("dalinira://newtab/")));
   });
 
-  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::tabCloseRequested, this, [this](int index) {
+  connect(tabStrip_, &dalinira::desktop_tabs::TabStripWidget::tabCloseRequested, this, [this](int index) {
     closeTab(index);
   });
 
-  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::currentChanged, this, [this](int index) {
+  connect(tabStrip_, &dalinira::desktop_tabs::TabStripWidget::currentChanged, this, [this](int index) {
     switchTab(index);
   });
 
-  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::tabMoved, this, [this](int from, int to) {
+  connect(tabStrip_, &dalinira::desktop_tabs::TabStripWidget::tabMoved, this, [this](int from, int to) {
     moveTab(from, to);
   });
 
-  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::tabHovered, this,
+  connect(tabStrip_, &dalinira::desktop_tabs::TabStripWidget::tabHovered, this,
           &BrowserWindow::onTabHovered);
 
-  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::tabHoverLeave, this,
+  connect(tabStrip_, &dalinira::desktop_tabs::TabStripWidget::tabHoverLeave, this,
           &BrowserWindow::onTabHoverLeave);
 
-  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::dragInitiated, this,
+  connect(tabStrip_, &dalinira::desktop_tabs::TabStripWidget::dragInitiated, this,
           [this](int index, const QPoint &screenPosition, const QPoint &pressOffsetInTab, const QSize &) {
     if (hoverCard_) hoverCard_->hideCard();
     if (index < 0 || index >= tabs_.size()) return;
     const QPoint offsetInWindow = mapFromGlobal(screenPosition);
-    ardali::desktop_tabs::TabDragController::instance().handleMousePress(
+    dalinira::desktop_tabs::TabDragController::instance().handleMousePress(
         this, tabStrip_, index, screenPosition, pressOffsetInTab, offsetInWindow);
   });
 
-  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::tabContextMenuRequested,
+  connect(tabStrip_, &dalinira::desktop_tabs::TabStripWidget::tabContextMenuRequested,
           this, &BrowserWindow::onTabContextMenuRequested);
 
   connect(&LanguageManager::instance(), &LanguageManager::languageChanged,
@@ -1681,18 +1701,18 @@ void BrowserWindow::retranslateUi() {
 void BrowserWindow::prepareAdBlockScripts(QWebEnginePage *page, const QUrl &url, bool force) {
   if (!page) return;
   const QString planKey = QStringLiteral("%1://%2").arg(url.scheme().toLower(), url.host().toLower());
-  if (!force && page->property("ardali-adblock-script-plan").toString() == planKey) return;
-  page->setProperty("ardali-adblock-script-plan", planKey);
+  if (!force && page->property("dalinira-adblock-script-plan").toString() == planKey) return;
+  page->setProperty("dalinira-adblock-script-plan", planKey);
   const bool refreshDocument = force || page->url() == url;
 
   static const QStringList names = {
-      QStringLiteral("ardali-adblock-cosmetic"),
-      QStringLiteral("ardali-adblock-scriptlets-main"),
-      QStringLiteral("ardali-adblock-scriptlets-isolated"),
-      QStringLiteral("ardali-adblock-procedural"),
-      QStringLiteral("ardali-adblock-youtube-guardian"),
-      QStringLiteral("ardali-fingerprint-protection"),
-      QStringLiteral("ardali-forget-site-storage")};
+      QStringLiteral("dalinira-adblock-cosmetic"),
+      QStringLiteral("dalinira-adblock-scriptlets-main"),
+      QStringLiteral("dalinira-adblock-scriptlets-isolated"),
+      QStringLiteral("dalinira-adblock-procedural"),
+      QStringLiteral("dalinira-adblock-youtube-guardian"),
+      QStringLiteral("dalinira-fingerprint-protection"),
+      QStringLiteral("dalinira-forget-site-storage")};
   for (const QString &name : names) {
     const auto installed = page->scripts().find(name);
     for (const QWebEngineScript &script : installed) page->scripts().remove(script);
@@ -1704,11 +1724,11 @@ void BrowserWindow::prepareAdBlockScripts(QWebEnginePage *page, const QUrl &url,
   const bool jsEnabled = services_.profileService->isJavascriptEnabled() &&
       !(services_.profileService->adBlockService()->settings()->protectionEnabled() && !policy.whitelisted && policy.blockScripts);
   page->settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, jsEnabled);
-  if (refreshDocument) page->runJavaScript(QStringLiteral("if(window.__ardaliCosmeticRuntime){window.__ardaliCosmeticRuntime.pause();}window.__ardaliProceduralRules=0;"), QWebEngineScript::ApplicationWorld);
+  if (refreshDocument) page->runJavaScript(QStringLiteral("if(window.__daliniraCosmeticRuntime){window.__daliniraCosmeticRuntime.pause();}window.__daliniraProceduralRules=0;"), QWebEngineScript::ApplicationWorld);
   for (const QWebEngineScript &script :
        services_.profileService->adBlockService()->createScriptingScriptsForHost(url.host().toLower())) {
     page->scripts().insert(script);
-    if (refreshDocument && (script.name() == QLatin1String("ardali-adblock-cosmetic") || script.name() == QLatin1String("ardali-adblock-procedural")))
+    if (refreshDocument && (script.name() == QLatin1String("dalinira-adblock-cosmetic") || script.name() == QLatin1String("dalinira-adblock-procedural")))
       page->runJavaScript(script.sourceCode(), script.worldId());
   }
 }
@@ -1717,18 +1737,18 @@ int BrowserWindow::addNewTab(const QUrl &url, int insertIndex, bool initiallyPin
                              const QString &initialTitle) {
   QUrl targetUrl = url;
   if (targetUrl.isEmpty()) {
-    targetUrl = QUrl(QStringLiteral("ardali://newtab/"));
+    targetUrl = QUrl(QStringLiteral("dalinira://newtab/"));
   }
 
   // Handle internal scheme navigations directly
   const QString scheme = targetUrl.scheme().toLower();
   const QString host = targetUrl.host().toLower();
-  if (scheme == QLatin1String("ardali") && host != QLatin1String("newtab")) {
+  if (scheme == QLatin1String("dalinira") && host != QLatin1String("newtab")) {
     if (host == QLatin1String("settings")) { showSettings(); return tabStrip_->currentIndex(); }
     if (host == QLatin1String("passwords")) { showPasswords(); return tabStrip_->currentIndex(); }
     if (host == QLatin1String("audio-effects")) { showAudioEffects(); return tabStrip_->currentIndex(); }
     if (host == QLatin1String("eq-presets")) { showEqPresetBrowser(); return tabStrip_->currentIndex(); }
-    if (host == QLatin1String("blocker")) { showArDaliBlockerSettings(); return tabStrip_->currentIndex(); }
+    if (host == QLatin1String("blocker")) { showDaliNiraBlockerSettings(); return tabStrip_->currentIndex(); }
     if (host == QLatin1String("downloads")) { showMediaDownloads(); return tabStrip_->currentIndex(); }
     if (host == QLatin1String("listen") || host == QLatin1String("pulse")) { showSongFinder(); return tabStrip_->currentIndex(); }
     if (host == QLatin1String("listen-settings")) { showSongFinderSettings(); return tabStrip_->currentIndex(); }
@@ -1989,7 +2009,7 @@ void BrowserWindow::switchTab(int index) {
     }
   } else if (info.content) {
     pageStack_->setCurrentWidget(info.content);
-    omnibox_->setText(QStringLiteral("ardali://") + info.internalId);
+    omnibox_->setText(QStringLiteral("dalinira://") + info.internalId);
     backBtn_->setEnabled(false);
     forwardBtn_->setEnabled(false);
     updateBlockerControls();
@@ -2080,7 +2100,7 @@ bool BrowserWindow::transferTabTo(uint64_t tabId, BrowserWindow *destination, in
 
   int sourceIndex = findIndexByTabId(tabId);
   if (sourceIndex < 0) {
-    const auto &session = ardali::desktop_tabs::TabDragController::instance().session();
+    const auto &session = dalinira::desktop_tabs::TabDragController::instance().session();
     if (session.isActive() && session.sourceWindow() == this) {
       sourceIndex = session.sourceTabIndex();
     }
@@ -2307,7 +2327,7 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
         tabs_[idx].icon = isIncognito() ? BrowserIcons::incognitoIcon() : BrowserIcons::appIcon();
         tabStrip_->setTabIcon(idx, tabs_[idx].icon);
       }
-      if (!isNewTabUrl(url) && url.scheme() != QLatin1String("ardali") && url.isValid()) {
+      if (!isNewTabUrl(url) && url.scheme() != QLatin1String("dalinira") && url.isValid()) {
         lastActiveWebUrl_ = url;
       }
       if (services_.profileService) {
@@ -2442,9 +2462,9 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
     if (success) {
       if (isNewTabUrl(view->url())) {
         const QString capability = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        view->page()->setProperty("ardali-suggest-capability", capability);
+        view->page()->setProperty("dalinira-suggest-capability", capability);
         const QString json = QString::fromUtf8(QJsonDocument(QJsonArray{capability}).toJson(QJsonDocument::Compact));
-        view->page()->runJavaScript(QStringLiteral("if(window.ardaliSuggestionBridge)window.ardaliSuggestionBridge(%1[0]);").arg(json));
+        view->page()->runJavaScript(QStringLiteral("if(window.daliniraSuggestionBridge)window.daliniraSuggestionBridge(%1[0]);").arg(json));
       }
       syncNewTabViews();
       updateSearchEngineIcon();
@@ -2503,7 +2523,7 @@ void BrowserWindow::syncNewTabViews() {
     tab.view->page()->runJavaScript(cardSettingsScript);
     tab.view->page()->runJavaScript(backgroundScript);
     const bool enabled = services_.profileService->searchSuggestions()->isEnabled() && !tab.view->page()->profile()->isOffTheRecord();
-    tab.view->page()->runJavaScript(QStringLiteral("if(window.ardaliSuggestionConsent)window.ardaliSuggestionConsent(%1,%2);")
+    tab.view->page()->runJavaScript(QStringLiteral("if(window.daliniraSuggestionConsent)window.daliniraSuggestionConsent(%1,%2);")
         .arg(enabled ? QStringLiteral("true") : QStringLiteral("false"), tab.view->page()->profile()->isOffTheRecord() ? QStringLiteral("false") : QStringLiteral("true")));
   }
 }
@@ -2515,7 +2535,7 @@ void BrowserWindow::handleNewTabBackgroundCommand(QWebEnginePage *sourcePage,
   if (!sourcePage || !sourceView || currentView() != sourceView ||
       !isNewTabUrl(sourcePage->url()) || sourcePage->profile() != services_.profile ||
       sourcePage->profile()->isOffTheRecord() || capability.isEmpty() ||
-      sourcePage->property("ardali-suggest-capability").toString() != capability ||
+      sourcePage->property("dalinira-suggest-capability").toString() != capability ||
       !services_.profileService) return;
 
   auto *store = services_.profileService->newTabBackgroundStore();
@@ -2531,7 +2551,7 @@ void BrowserWindow::handleNewTabBackgroundCommand(QWebEnginePage *sourcePage,
         tr("Görseller (*.png *.jpg *.jpeg *.webp)"));
     if (selectedPath.isEmpty()) {
       if (sourcePage && isNewTabUrl(sourcePage->url()))
-        sourcePage->runJavaScript(QStringLiteral("if(window.ardaliBackgroundCancelled)window.ardaliBackgroundCancelled();"));
+        sourcePage->runJavaScript(QStringLiteral("if(window.daliniraBackgroundCancelled)window.daliniraBackgroundCancelled();"));
       return;
     }
     const auto result = store->importImage(selectedPath);
@@ -2553,7 +2573,7 @@ void BrowserWindow::handleNewTabBackgroundCommand(QWebEnginePage *sourcePage,
       : 0;
   const QString resultScript = newTabBackgroundResultScript(ok, message, available, revision, selectCustom);
 
-  for (const auto &registered : ardali::desktop_tabs::TabWindowRegistry::instance().registeredWindows()) {
+  for (const auto &registered : dalinira::desktop_tabs::TabWindowRegistry::instance().registeredWindows()) {
     auto *window = registered.window ? qobject_cast<BrowserWindow *>(registered.window.data()) : nullptr;
     if (!window || window->services().profileService != services_.profileService) continue;
     for (const BrowserTabInfo &tab : window->allTabs()) {
@@ -2577,25 +2597,25 @@ void BrowserWindow::navigateFromUserInput(const QString &rawInput, const QString
   const QString input = rawInput.trimmed();
   if (input.isEmpty()) return;
 
-  // Prevent recursion or loop if ardali://navigate is passed
-  if (input.startsWith(QStringLiteral("ardali://navigate"), Qt::CaseInsensitive)) {
+  // Prevent recursion or loop if dalinira://navigate is passed
+  if (input.startsWith(QStringLiteral("dalinira://navigate"), Qt::CaseInsensitive)) {
     return;
   }
 
-  // Check for internal ardali:// schemes
-  if (input.startsWith(QStringLiteral("ardali://"), Qt::CaseInsensitive)) {
+  // Check for internal dalinira:// schemes
+  if (input.startsWith(QStringLiteral("dalinira://"), Qt::CaseInsensitive)) {
     const QUrl internalUrl(input);
     const QString host = internalUrl.host().toLower();
     if (host == QLatin1String("settings")) { showSettings(); return; }
     if (host == QLatin1String("passwords")) { showPasswords(); return; }
     if (host == QLatin1String("audio-effects")) { showAudioEffects(); return; }
     if (host == QLatin1String("eq-presets")) { showEqPresetBrowser(); return; }
-    if (host == QLatin1String("blocker")) { showArDaliBlockerSettings(); return; }
+    if (host == QLatin1String("blocker")) { showDaliNiraBlockerSettings(); return; }
     if (host == QLatin1String("downloads")) { showMediaDownloads(); return; }
     if (host == QLatin1String("listen") || host == QLatin1String("pulse")) { showSongFinder(); return; }
     if (host == QLatin1String("listen-settings")) { showSongFinderSettings(); return; }
     if (host == QLatin1String("newtab") || host == QLatin1String("incognito")) {
-      const QUrl newTabUrl(isIncognito() ? QStringLiteral("ardali://incognito/") : QStringLiteral("ardali://newtab/"));
+      const QUrl newTabUrl(isIncognito() ? QStringLiteral("dalinira://incognito/") : QStringLiteral("dalinira://newtab/"));
       if (auto *view = currentView()) {
         const int idx = tabStrip_ ? tabStrip_->currentIndex() : -1;
         if (idx >= 0 && idx < tabs_.size() && tabs_[idx].view == view) {
@@ -2611,18 +2631,24 @@ void BrowserWindow::navigateFromUserInput(const QString &rawInput, const QString
   }
 
   const QString engine = searchEngine.isEmpty() ? currentSearchEngine() : searchEngine;
-  auto resolution = ardali::core::AddressInputResolver::resolve(
+  auto resolution = dalinira::core::AddressInputResolver::resolve(
       input, engine, QLocale::system(), candidateProvider_.get());
-  if (resolution.classification == ardali::core::AddressInputClassification::Search
+  if (resolution.classification == dalinira::core::AddressInputClassification::Search
       && services_.profileService) {
     const QUrl customUrl = services_.profileService->searchUrlForEngine(
         engine, resolution.searchQuery.isEmpty() ? input : resolution.searchQuery);
     if (customUrl.isValid()) resolution.url = customUrl;
   }
-  const QUrl url = resolution.url;
+  QUrl url = resolution.url;
   if (!url.isValid() || url.isEmpty()) return;
 
-  if (resolution.classification == ardali::core::AddressInputClassification::Search &&
+  const bool adultProtection = services_.profileService
+      ? services_.profileService->isAdultContentProtectionEnabled() : true;
+  if (adultProtection && dalinira::core::AdultContentProtectionService::instance().isBlocked(url)) {
+    url = QUrl(QStringLiteral("dalinira://blocked/adult"));
+  }
+
+  if (resolution.classification == dalinira::core::AddressInputClassification::Search &&
       services_.profileService && services_.profile == services_.profileService->profile() &&
       !services_.profile->isOffTheRecord()) {
     services_.profileService->recordSearch(resolution.searchQuery.isEmpty() ? input : resolution.searchQuery);
@@ -2632,7 +2658,7 @@ void BrowserWindow::navigateFromUserInput(const QString &rawInput, const QString
     const int idx = tabStrip_->currentIndex();
     if (idx >= 0 && idx < tabs_.size() && tabs_[idx].view == view) {
       tabs_[idx].expectedTypedUrl =
-          resolution.classification == ardali::core::AddressInputClassification::Search ? QUrl{} : url;
+          resolution.classification == dalinira::core::AddressInputClassification::Search ? QUrl{} : url;
       tabs_[idx].url = url;
       updateBookmarkBarVisibility();
     }
@@ -2642,7 +2668,7 @@ void BrowserWindow::navigateFromUserInput(const QString &rawInput, const QString
     const int idx = addNewTab(url);
     if (idx >= 0 && idx < tabs_.size() && !tabs_[idx].isInternal) {
       tabs_[idx].expectedTypedUrl =
-          resolution.classification == ardali::core::AddressInputClassification::Search ? QUrl{} : url;
+          resolution.classification == dalinira::core::AddressInputClassification::Search ? QUrl{} : url;
     }
   }
 }
@@ -2686,7 +2712,7 @@ void BrowserWindow::onReloadOrStopClicked() {
 }
 
 void BrowserWindow::onHomeClicked() {
-  const QUrl homeUrl(isIncognito() ? QStringLiteral("ardali://incognito/") : QStringLiteral("ardali://newtab/"));
+  const QUrl homeUrl(isIncognito() ? QStringLiteral("dalinira://incognito/") : QStringLiteral("dalinira://newtab/"));
   if (auto *view = currentView()) {
     const int idx = tabStrip_ ? tabStrip_->currentIndex() : -1;
     if (idx >= 0 && idx < tabs_.size() && tabs_[idx].view == view) {
@@ -2710,7 +2736,7 @@ void BrowserWindow::updateNavButtons() {
     }
     const bool isMedia = MediaDownloadService::isSupportedMediaUrl(view->url()) &&
                          !isNewTabUrl(view->url()) &&
-                         view->url().scheme() != QLatin1String("ardali");
+                         view->url().scheme() != QLatin1String("dalinira");
     if (mediaDownload_) {
       mediaDownload_->setEnabled(true);
       mediaDownload_->setProperty("activeMedia", isMedia);
@@ -2784,7 +2810,7 @@ void BrowserWindow::showDownloadStartedAnimation() {
   const auto finishAcknowledgement = [this] {
     if (!mediaDownload_ || !downloadPopup_) return;
     const bool wasAlreadyOpen = downloadPopup_->isVisible();
-    const QUrl activeUrl = (currentView() && !isNewTabUrl(currentView()->url()) && currentView()->url().scheme() != QLatin1String("ardali"))
+    const QUrl activeUrl = (currentView() && !isNewTabUrl(currentView()->url()) && currentView()->url().scheme() != QLatin1String("dalinira"))
         ? currentView()->url() : lastActiveWebUrl_;
     const bool pageHasMedia = currentView() && currentView()->page() && currentView()->page()->recentlyAudible();
     if (!activeUrl.isEmpty() && MediaPlatformRegistry::shouldAutoAnalyzeMedia(activeUrl, pageHasMedia)) {
@@ -2858,14 +2884,14 @@ void BrowserWindow::showSettings(SettingsPage::Category category) {
   hooks.refreshBookmarks = [this] { renderBookmarks(); };
   hooks.refreshBookmarkBarVisibility = [this] { updateBookmarkBarVisibility(); };
   hooks.refreshTabStyle = [] {
-    ardali::desktop_tabs::TabWindowRegistry::instance().reloadTabAppearances();
+    dalinira::desktop_tabs::TabWindowRegistry::instance().reloadTabAppearances();
   };
   hooks.performanceManager = [this] { return services_.tabManager ? services_.tabManager->performanceManager() : nullptr; };
 
   auto *page = new SettingsPage(services_.profileService, std::move(hooks));
   page->setCategory(category);
   connect(page, &SettingsPage::navigateRequested, this, [this](const QUrl &url) {
-    if (url == QUrl(QStringLiteral("ardali://passwords"))) showPasswords();
+    if (url == QUrl(QStringLiteral("dalinira://passwords"))) showPasswords();
     else addNewTab(url);
   });
 
@@ -2926,7 +2952,7 @@ void BrowserWindow::showEqPresetBrowser() {
   addInternalTab(page, QStringLiteral("Hazır Ses Efektleri"), QIcon(QStringLiteral(":/side-widget-icons/eq-presets.svg")), QStringLiteral("eq-presets"));
 }
 
-void BrowserWindow::showArDaliBlockerSettings(ArDaliBlockerPage::Tab tab) {
+void BrowserWindow::showDaliNiraBlockerSettings(DaliNiraBlockerPage::Tab tab) {
   if (!services_.profileService || !services_.profileService->adBlockService()) return;
   if (services_.tabManager) {
     const auto existingId = services_.tabManager->findInternal(this, QStringLiteral("blocker"));
@@ -2935,16 +2961,16 @@ void BrowserWindow::showArDaliBlockerSettings(ArDaliBlockerPage::Tab tab) {
       if (record && record->content) {
         const int idx = pageStack_->indexOf(record->content);
         if (idx >= 0) {
-          if (auto *page = qobject_cast<ArDaliBlockerPage *>(record->content.data())) page->setActiveTab(tab);
+          if (auto *page = qobject_cast<DaliNiraBlockerPage *>(record->content.data())) page->setActiveTab(tab);
           switchTab(idx);
           return;
         }
       }
     }
   }
-  auto *page = new ArDaliBlockerPage(services_.profileService->adBlockService());
+  auto *page = new DaliNiraBlockerPage(services_.profileService->adBlockService());
   page->setActiveTab(tab);
-  addInternalTab(page, QStringLiteral("ArDali Blocker"), QIcon(QStringLiteral(":/side-widget-icons/deliblock.svg")), QStringLiteral("blocker"));
+  addInternalTab(page, QStringLiteral("DaliNira Blocker"), QIcon(QStringLiteral(":/side-widget-icons/deliblock.svg")), QStringLiteral("blocker"));
 }
 
 void BrowserWindow::showSongFinder() {
@@ -2961,7 +2987,7 @@ void BrowserWindow::showSongFinder() {
   auto *page = new SongFinderPage(services_.songRecognition);
   connect(page, &SongFinderPage::openPreferencesRequested, this, &BrowserWindow::showSongFinderSettings);
   connect(page, &SongFinderPage::openUrlRequested, this, [this](const QUrl &url) { addNewTab(url); });
-  addInternalTab(page, QStringLiteral("ArDali Pulse"), QIcon(QStringLiteral(":/side-widget-icons/pulse.svg")), QStringLiteral("song-finder"));
+  addInternalTab(page, QStringLiteral("DaliNira Pulse"), QIcon(QStringLiteral(":/side-widget-icons/pulse.svg")), QStringLiteral("song-finder"));
 }
 
 void BrowserWindow::showSongFinderSettings() {
@@ -2987,7 +3013,7 @@ void BrowserWindow::showMediaDownloads(const QUrl &sourceUrl, bool analyzeImmedi
   bool shouldAnalyze = analyzeImmediately;
 
   if (targetUrl.isEmpty()) {
-    const QUrl activeUrl = (currentView() && !isNewTabUrl(currentView()->url()) && currentView()->url().scheme() != QLatin1String("ardali"))
+    const QUrl activeUrl = (currentView() && !isNewTabUrl(currentView()->url()) && currentView()->url().scheme() != QLatin1String("dalinira"))
         ? currentView()->url() : lastActiveWebUrl_;
     const bool pageHasMedia = currentView() && currentView()->page() && currentView()->page()->recentlyAudible();
     if (!activeUrl.isEmpty() && MediaPlatformRegistry::shouldAutoAnalyzeMedia(activeUrl, pageHasMedia)) {
@@ -3212,7 +3238,7 @@ void BrowserWindow::restoreSession(const QVector<SavedTab> &savedTabs) {
 
 void BrowserWindow::ensureInitialTab() {
   if (tabs_.isEmpty()) {
-    addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+    addNewTab(QUrl(QStringLiteral("dalinira://newtab/")));
   }
 }
 
@@ -3232,7 +3258,7 @@ void BrowserWindow::closeEvent(QCloseEvent *event) {
     if (ownsOpenPulsePage) services_.songRecognition->stopListening();
   }
   saveSessionNow();
-  ardali::desktop_tabs::TabWindowRegistry::instance().unregisterWindow(this);
+  dalinira::desktop_tabs::TabWindowRegistry::instance().unregisterWindow(this);
   QMainWindow::closeEvent(event);
   if (event->isAccepted() && services_.profileService) {
     auto *blocker = services_.profileService->blockerService();
@@ -3344,7 +3370,7 @@ void BrowserWindow::resizeEvent(QResizeEvent *event) {
   if (!isMaximized() && !isFullScreen() && !(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
     lastNormalSize_ = size();
     lastNormalGeometry_ = geometry();
-    setProperty("ardaliRestoredSize", lastNormalSize_);
+    setProperty("daliniraRestoredSize", lastNormalSize_);
   }
 }
 
@@ -3358,7 +3384,7 @@ void BrowserWindow::moveEvent(QMoveEvent *event) {
   if (!isMaximized() && !isFullScreen() && !(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
     lastNormalGeometry_ = geometry();
     lastNormalSize_ = size();
-    setProperty("ardaliRestoredSize", lastNormalSize_);
+    setProperty("daliniraRestoredSize", lastNormalSize_);
   }
 }
 
@@ -3399,8 +3425,8 @@ Qt::Edges BrowserWindow::calculateEdges(const QPoint &pos) const {
 
 void BrowserWindow::updateCursorShape(const QPoint &pos) {
   if (isMaximized() || isFullScreen() ||
-      property("ardaliDragCaptureShell").toBool() ||
-      ardali::desktop_tabs::TabDragController::instance().isActive()) {
+      property("daliniraDragCaptureShell").toBool() ||
+      dalinira::desktop_tabs::TabDragController::instance().isActive()) {
     if (hasOverrideCursor_) {
       QGuiApplication::restoreOverrideCursor();
       hasOverrideCursor_ = false;
@@ -3503,8 +3529,8 @@ void BrowserWindow::mouseMoveEvent(QMouseEvent *event) {
     event->accept();
     return;
   }
-  if (!property("ardaliDragCaptureShell").toBool() &&
-      !ardali::desktop_tabs::TabDragController::instance().isActive()) {
+  if (!property("daliniraDragCaptureShell").toBool() &&
+      !dalinira::desktop_tabs::TabDragController::instance().isActive()) {
     updateCursorShape(event->position().toPoint());
   } else {
     if (hasOverrideCursor_) {
@@ -3536,7 +3562,7 @@ QIcon BrowserWindow::tabIconForRecord(const BrowserTabInfo &info) const {
   if (info.isInternal && !info.icon.isNull()) {
     return info.icon;
   }
-  const bool isNewTab = (info.view && (isNewTabUrl(info.view->url()) || info.view->property("ardali-is-newtab-intent").toBool()))
+  const bool isNewTab = (info.view && (isNewTabUrl(info.view->url()) || info.view->property("dalinira-is-newtab-intent").toBool()))
                      || isNewTabUrl(info.url) || info.url.isEmpty();
   if (isNewTab) {
     return BrowserIcons::appIcon();
@@ -3571,7 +3597,7 @@ void BrowserWindow::updateBlockerControls() {
     adBlockShield_->setInternalPage(true);
     adBlockShield_->setActiveHost(QString());
     adBlockShield_->setBlockedCount(0);
-    adBlockShield_->setToolTip(I18n::text(QStringLiteral("toolbar.adblock"), QStringLiteral("ArDali Koruma (Reklam Engelleyici)")));
+    adBlockShield_->setToolTip(I18n::text(QStringLiteral("toolbar.adblock"), QStringLiteral("DaliNira Koruma (Reklam Engelleyici)")));
     return;
   }
 
@@ -3588,11 +3614,11 @@ void BrowserWindow::updateBlockerControls() {
     const quint64 total = stats.totalBlocked();
     adBlockShield_->setBlockedCount(total);
     adBlockShield_->setToolTip(total > 0
-        ? I18n::text(QStringLiteral("toolbar.adblock_status"), QStringLiteral("ArDali Koruma: %1")).arg(host) + QStringLiteral(" (") + I18n::text(QStringLiteral("toolbar.adblock_blocked_count"), QStringLiteral("%1 öğe engellendi")).arg(total) + QStringLiteral(")")
-        : I18n::text(QStringLiteral("toolbar.adblock_status"), QStringLiteral("ArDali Koruma: %1")).arg(host));
+        ? I18n::text(QStringLiteral("toolbar.adblock_status"), QStringLiteral("DaliNira Koruma: %1")).arg(host) + QStringLiteral(" (") + I18n::text(QStringLiteral("toolbar.adblock_blocked_count"), QStringLiteral("%1 öğe engellendi")).arg(total) + QStringLiteral(")")
+        : I18n::text(QStringLiteral("toolbar.adblock_status"), QStringLiteral("DaliNira Koruma: %1")).arg(host));
   } else {
     adBlockShield_->setBlockedCount(0);
-    adBlockShield_->setToolTip(I18n::text(QStringLiteral("toolbar.adblock_status"), QStringLiteral("ArDali Koruma: %1")).arg(host));
+    adBlockShield_->setToolTip(I18n::text(QStringLiteral("toolbar.adblock_status"), QStringLiteral("DaliNira Koruma: %1")).arg(host));
   }
 }
 
@@ -3606,7 +3632,7 @@ void BrowserWindow::toggleCurrentBookmark() {
 }
 
 void BrowserWindow::renderBookmarks() {
-  using Metrics = ardali::ui::BrowserChromeMetrics;
+  using Metrics = dalinira::ui::BrowserChromeMetrics;
   if (!bookmarkBar_ || !services_.profileService) return;
   bookmarkBar_->clear();
 
@@ -3830,7 +3856,7 @@ void BrowserWindow::updateBookmarkBarVisibility() {
       QStringLiteral("browser/bookmarkBarVisibility"),
       QStringLiteral("new_tab")).toString();
 
-  // Show the bookmark bar ONLY while the active tab is the ArDali New Tab page.
+  // Show the bookmark bar ONLY while the active tab is the DaliNira New Tab page.
   // Hide it on every normal website, search results page, internal non-New-Tab page, and local page.
   const bool shouldBeVisible = (mode != QLatin1String("never")) && isCurrentTabNewTab();
 
@@ -3884,7 +3910,7 @@ void BrowserWindow::updateSearchEngineIcon() {
   const QString json = QString::fromUtf8(QJsonDocument(QJsonArray{engine}).toJson(QJsonDocument::Compact));
   for (const auto &tab : std::as_const(tabs_)) {
     if (tab.view && isNewTabUrl(tab.view->url())) {
-      tab.view->page()->runJavaScript(QStringLiteral("if(location.protocol==='ardali:'&&location.hostname==='newtab'&&window.ardaliSetSearchEngine)window.ardaliSetSearchEngine(%1[0]);").arg(json));
+      tab.view->page()->runJavaScript(QStringLiteral("if(location.protocol==='dalinira:'&&location.hostname==='newtab'&&window.daliniraSetSearchEngine)window.daliniraSetSearchEngine(%1[0]);").arg(json));
     }
   }
   updateOmniboxLeadingIcon();
@@ -4136,8 +4162,8 @@ bool BrowserWindow::eventFilter(QObject *watched, QEvent *event) {
     }
   }
 
-  if (!property("ardaliDragCaptureShell").toBool() &&
-      !ardali::desktop_tabs::TabDragController::instance().isActive() &&
+  if (!property("daliniraDragCaptureShell").toBool() &&
+      !dalinira::desktop_tabs::TabDragController::instance().isActive() &&
       !isMaximized() && !isFullScreen() && !(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
     auto *widget = qobject_cast<QWidget *>(watched);
     if (widget && (widget == this || this->isAncestorOf(widget)) && (!widget->isWindow() || widget == this)) {
@@ -4251,7 +4277,7 @@ void BrowserWindow::toggleTabSearchPopup() {
     return;
   }
   if (!tabSearchPopup_) {
-    tabSearchPopup_ = new ardali::desktop_tabs::TabSearchPopup(this);
+    tabSearchPopup_ = new dalinira::desktop_tabs::TabSearchPopup(this);
   }
   tabSearchPopup_->showBelow(tabSearchBtn_);
 }
@@ -4262,8 +4288,8 @@ void BrowserWindow::toggleTabGroupLauncher() {
     return;
   }
   if (!tabGroupLauncherPopup_) {
-    tabGroupLauncherPopup_ = new ardali::desktop_tabs::TabGroupLauncherPopup(this);
-    connect(tabGroupLauncherPopup_, &ardali::desktop_tabs::TabGroupLauncherPopup::createGroupRequested,
+    tabGroupLauncherPopup_ = new dalinira::desktop_tabs::TabGroupLauncherPopup(this);
+    connect(tabGroupLauncherPopup_, &dalinira::desktop_tabs::TabGroupLauncherPopup::createGroupRequested,
             this, &BrowserWindow::createNewTabGroupWithNewTab);
   }
   tabGroupLauncherPopup_->showBelow(appsBtn_);
@@ -4272,12 +4298,12 @@ void BrowserWindow::toggleTabGroupLauncher() {
 void BrowserWindow::createNewTabGroupWithNewTab() {
   if (!groupModel_) return;
 
-  // 1. Create a brand new normal ArDali tab at the end of tabs using existing creation path
-  const int newIdx = addNewTab(QUrl(QStringLiteral("ardali://newtab/")), -1);
+  // 1. Create a brand new normal DaliNira tab at the end of tabs using existing creation path
+  const int newIdx = addNewTab(QUrl(QStringLiteral("dalinira://newtab/")), -1);
   if (newIdx < 0 || newIdx >= tabs_.size()) return;
 
   // 2. Generate a new stable Group UID
-  const QColor defaultColor = ardali::desktop_tabs::tabGroupColorPalette().value(0, QColor("#757b82"));
+  const QColor defaultColor = dalinira::desktop_tabs::tabGroupColorPalette().value(0, QColor("#757b82"));
   const QUuid groupId = groupModel_->createGroup(QString(), defaultColor);
 
   // 3. Associate NEW Tab UID -> Group UID
@@ -4311,7 +4337,7 @@ void BrowserWindow::createGroupFromExistingTab(uint64_t tabId) {
   if (tab.groupId.has_value() && groupModel_->hasGroup(*tab.groupId)) {
     groupId = *tab.groupId;
   } else {
-    const QColor defaultColor = ardali::desktop_tabs::tabGroupColorPalette().value(0, QColor("#757b82"));
+    const QColor defaultColor = dalinira::desktop_tabs::tabGroupColorPalette().value(0, QColor("#757b82"));
     groupId = groupModel_->createGroup(QString(), defaultColor);
     tab.groupId = groupId;
     groupModel_->setTabGroup(tab.id, groupId);
@@ -4333,16 +4359,16 @@ void BrowserWindow::createGroupFromExistingTab(uint64_t tabId) {
 void BrowserWindow::showTabGroupPopup(const QUuid &groupId, const QPoint &globalPos) {
   if (!groupModel_ || groupId.isNull()) return;
   if (!tabGroupPopup_) {
-    tabGroupPopup_ = new ardali::desktop_tabs::TabGroupPopup(groupModel_, this);
-    connect(tabGroupPopup_, &ardali::desktop_tabs::TabGroupPopup::newTabInGroupRequested,
+    tabGroupPopup_ = new dalinira::desktop_tabs::TabGroupPopup(groupModel_, this);
+    connect(tabGroupPopup_, &dalinira::desktop_tabs::TabGroupPopup::newTabInGroupRequested,
             this, &BrowserWindow::addTabToGroup);
-    connect(tabGroupPopup_, &ardali::desktop_tabs::TabGroupPopup::moveGroupToNewWindowRequested,
+    connect(tabGroupPopup_, &dalinira::desktop_tabs::TabGroupPopup::moveGroupToNewWindowRequested,
             this, &BrowserWindow::moveGroupToNewWindow);
-    connect(tabGroupPopup_, &ardali::desktop_tabs::TabGroupPopup::closeGroupRequested,
+    connect(tabGroupPopup_, &dalinira::desktop_tabs::TabGroupPopup::closeGroupRequested,
             this, &BrowserWindow::closeTabGroup);
-    connect(tabGroupPopup_, &ardali::desktop_tabs::TabGroupPopup::ungroupRequested,
+    connect(tabGroupPopup_, &dalinira::desktop_tabs::TabGroupPopup::ungroupRequested,
             this, &BrowserWindow::ungroupTabs);
-    connect(tabGroupPopup_, &ardali::desktop_tabs::TabGroupPopup::deleteGroupRequested,
+    connect(tabGroupPopup_, &dalinira::desktop_tabs::TabGroupPopup::deleteGroupRequested,
             this, &BrowserWindow::deleteTabGroup);
   }
 
@@ -4372,7 +4398,7 @@ void BrowserWindow::addTabToGroup(const QUuid &groupId) {
   }
 
   const int insertIdx = (lastGroupIdx >= 0) ? lastGroupIdx + 1 : tabs_.size();
-  const int newIdx = addNewTab(QUrl(QStringLiteral("ardali://newtab/")), insertIdx);
+  const int newIdx = addNewTab(QUrl(QStringLiteral("dalinira://newtab/")), insertIdx);
   if (newIdx >= 0 && newIdx < tabs_.size()) {
     tabs_[newIdx].groupId = groupId;
     groupModel_->setTabGroup(tabs_[newIdx].id, groupId);
@@ -4388,7 +4414,7 @@ void BrowserWindow::moveGroupToNewWindow(const QUuid &groupId) {
   const QList<uint64_t> memberTabIds = groupModel_->tabsInGroup(groupId);
   if (memberTabIds.isEmpty()) return;
 
-  const ardali::desktop_tabs::TabGroup groupToMove = *optGroup;
+  const dalinira::desktop_tabs::TabGroup groupToMove = *optGroup;
 
   auto *newWindow = new BrowserWindow(services_);
   newWindow->groupModel()->addOrUpdateGroup(groupToMove);
@@ -4458,7 +4484,7 @@ void BrowserWindow::deleteTabGroup(const QUuid &groupId) {
   closeTabGroup(groupId);
 }
 
-std::optional<ardali::desktop_tabs::TabGroup> BrowserWindow::groupForTab(uint64_t tabId) const {
+std::optional<dalinira::desktop_tabs::TabGroup> BrowserWindow::groupForTab(uint64_t tabId) const {
   if (!groupModel_) return std::nullopt;
   const auto optGid = groupModel_->groupIdForTab(tabId);
   if (!optGid.has_value() || optGid->isNull()) return std::nullopt;
@@ -4471,7 +4497,7 @@ void BrowserWindow::onTabHovered(int index, const QPoint &globalPos, const QRect
     if (hoverCard_) hoverCard_->hideCard();
     return;
   }
-  if (ardali::desktop_tabs::TabDragController::instance().isActive()) {
+  if (dalinira::desktop_tabs::TabDragController::instance().isActive()) {
     if (hoverCard_) hoverCard_->hideCard();
     return;
   }
@@ -4513,7 +4539,7 @@ void BrowserWindow::onTabHoverLeave() {
 
 QVector<QPointer<QWebEngineView>> BrowserWindow::collectAllWebViewsAcrossWindows() const {
   QVector<QPointer<QWebEngineView>> views;
-  const auto regWindows = ardali::desktop_tabs::TabWindowRegistry::instance().registeredWindows();
+  const auto regWindows = dalinira::desktop_tabs::TabWindowRegistry::instance().registeredWindows();
   for (const auto &rw : regWindows) {
     if (rw.window.isNull()) continue;
     if (!rw.window->isVisible()) continue;
@@ -4572,9 +4598,17 @@ QJsonArray BrowserWindow::searchRows(const QString &query, const QStringList &re
   const auto search = [&](const QString &text, const QString &type) {
     const QUrl url = services_.profileService
         ? services_.profileService->searchUrlForEngine(currentSearchEngine(), text)
-        : ardali::core::AddressInputResolver::searchUrlForEngine(currentSearchEngine(), text);
+        : dalinira::core::AddressInputResolver::searchUrlForEngine(currentSearchEngine(), text);
     append(text, url, type);
   };
+  if (!cleanQuery.isEmpty()) {
+    const auto resolution = dalinira::core::AddressInputResolver::resolve(
+        cleanQuery, currentSearchEngine(), QLocale::system(), candidateProvider_.get());
+    if (resolution.classification != dalinira::core::AddressInputClassification::Search &&
+        resolution.url.isValid() && (resolution.url.scheme() == QLatin1String("https") || resolution.url.scheme() == QLatin1String("http"))) {
+      append(cleanQuery, resolution.url, QStringLiteral("site"));
+    }
+  }
   if (!cleanQuery.isEmpty()) search(cleanQuery, QStringLiteral("search"));
   // Local data is available only to its owning regular profile.
   if (services_.profileService && services_.profile == services_.profileService->profile() && !services_.profile->isOffTheRecord()) {
@@ -4664,19 +4698,40 @@ void BrowserWindow::updateOmniboxSuggestions(const QString &query) {
 
 void BrowserWindow::requestNewTabSuggestions(QWebEnginePage *page, const QString &query, int requestId) {
   if (!page || !services_.profileService || !services_.profileService->searchSuggestions()->isEnabled()
-      || !currentView() || currentView()->page() != page || !isNewTabUrl(page->url())) return;
+      || !currentView() || currentView()->page() != page || !isNewTabUrl(page->url())
+      || query.trimmed().isEmpty()) return;
   const QPointer<QWebEnginePage> target(page);
   const QPointer<BrowserWindow> guard(this);
-  const QString capability = page->property("ardali-suggest-capability").toString();
+  const QString capability = page->property("dalinira-suggest-capability").toString();
   const QString engine = currentSearchEngine();
-  page->setProperty("ardali-suggest-id", requestId);
+  page->setProperty("dalinira-suggest-id", requestId);
   auto render = [guard,target,capability,engine,query,requestId](const QStringList &remote) {
-    if (!guard || !target || !isNewTabUrl(target->url()) || target->property("ardali-suggest-capability").toString()!=capability ||
-        target->property("ardali-suggest-id").toInt()!=requestId || guard->currentSearchEngine()!=engine) return;
-    const QString json = QString::fromUtf8(QJsonDocument(QJsonArray{requestId,query,guard->searchRows(query,remote)}).toJson(QJsonDocument::Compact));
-    target->runJavaScript(QStringLiteral("if(window.ardaliShowSuggestions)window.ardaliShowSuggestions(...%1);").arg(json));
+    if (!guard || !target || !isNewTabUrl(target->url()) || target->property("dalinira-suggest-capability").toString()!=capability ||
+        target->property("dalinira-suggest-id").toInt()!=requestId || guard->currentSearchEngine()!=engine) return;
+    const QJsonArray rows = guard->searchRows(query, remote);
+    bool hasSuggestions = false;
+    for (const auto &val : rows) {
+      const auto obj = val.toObject();
+      const QString type = obj.value(QStringLiteral("type")).toString();
+      if (type != QLatin1String("search") || obj.value(QStringLiteral("text")).toString().trimmed() != query.trimmed()) {
+        hasSuggestions = true;
+        break;
+      }
+    }
+    const QString json = QString::fromUtf8(QJsonDocument(QJsonArray{requestId,query,hasSuggestions ? rows : QJsonArray{}}).toJson(QJsonDocument::Compact));
+    target->runJavaScript(QStringLiteral("if(window.daliniraShowSuggestions)window.daliniraShowSuggestions(...%1);").arg(json));
   };
-  render({});
+  const QJsonArray localRows = searchRows(query, {});
+  bool hasLocal = false;
+  for (const auto &val : localRows) {
+    if (val.toObject().value(QStringLiteral("type")).toString() != QLatin1String("search")) {
+      hasLocal = true;
+      break;
+    }
+  }
+  if (hasLocal) {
+    render({});
+  }
   services_.profileService->searchSuggestions()->request(page,query,engine,
       page->profile()->isOffTheRecord() || page->profile()!=services_.profileService->profile(),render);
 }
@@ -4697,7 +4752,7 @@ bool BrowserWindow::beginForgetClosedView(QWebEngineView *view) {
     try{tasks.push(indexedDB.databases().then(list=>Promise.all(list.slice(0,256).map(db=>new Promise(resolve=>{const request=indexedDB.deleteDatabase(db.name);request.onsuccess=request.onerror=request.onblocked=resolve})))))}catch(_){}
     try{tasks.push(caches.keys().then(keys=>Promise.all(keys.slice(0,256).map(key=>caches.delete(key)))))}catch(_){}
     try{tasks.push(navigator.serviceWorker.getRegistrations().then(list=>Promise.all(list.slice(0,256).map(reg=>reg.unregister()))))}catch(_){}
-    Promise.allSettled(tasks).then(()=>{window.__ardaliForgetDone=true});
+    Promise.allSettled(tasks).then(()=>{window.__daliniraForgetDone=true});
   })())JS"), QWebEngineScript::ApplicationWorld);
   const QPointer<QWebEngineView> guard(view);
   auto *timer = new QTimer(view);
@@ -4705,7 +4760,7 @@ bool BrowserWindow::beginForgetClosedView(QWebEngineView *view) {
   connect(timer, &QTimer::timeout, view, [guard,timer] {
     timer->stop();
     if (!guard) return;
-    guard->page()->runJavaScript(QStringLiteral("window.__ardaliForgetDone===true"), QWebEngineScript::ApplicationWorld,
+    guard->page()->runJavaScript(QStringLiteral("window.__daliniraForgetDone===true"), QWebEngineScript::ApplicationWorld,
       [guard,timer](const QVariant &done) { if (!guard) return; if (done.toBool()) guard->deleteLater(); else timer->start(); });
   });
   timer->start();
@@ -5176,6 +5231,9 @@ BrowserWindow *BrowserWindow::openIncognitoWindow(const QUrl &url) {
       new BrowserProfileService(directory->path(), services_.policy, nullptr, true),
       [directory](BrowserProfileService *service) { delete service; });
   auto *privateService = privateOwner.get();
+  if (services_.profileService) {
+    privateService->setAdultContentProtectionEnabled(services_.profileService->isAdultContentProtectionEnabled());
+  }
   incognitoServices.privateProfileOwner = privateOwner;
   incognitoServices.profileService = privateService;
   incognitoServices.profile = privateService->profile();
@@ -5194,7 +5252,7 @@ BrowserWindow *BrowserWindow::openIncognitoWindow(const QUrl &url) {
   auto *window = new BrowserWindow(incognitoServices);
 
   window->setAttribute(Qt::WA_DeleteOnClose);
-  window->setWindowTitle(QStringLiteral("Gizli Pencere — ArDaliBrowser"));
+  window->setWindowTitle(QStringLiteral("Gizli Pencere — DaliNiraBrowser"));
   if (url.isValid() && !url.isEmpty()) {
     window->addNewTab(url);
   } else {
@@ -5208,7 +5266,7 @@ void BrowserWindow::openDevToolsForPage(QWebEnginePage *page) {
   if (!page) return;
   auto *devWindow = new QMainWindow(this);
   devWindow->setAttribute(Qt::WA_DeleteOnClose);
-  devWindow->setWindowTitle(QStringLiteral("Geliştirici Araçları (İncele) — ArDaliBrowser"));
+  devWindow->setWindowTitle(QStringLiteral("Geliştirici Araçları (İncele) — DaliNiraBrowser"));
   devWindow->resize(960, 640);
   devWindow->setStyleSheet(QStringLiteral("QMainWindow { background: #121820; color: #e6edf3; }"));
   auto *devView = new QWebEngineView(devWindow);

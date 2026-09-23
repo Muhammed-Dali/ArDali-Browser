@@ -1,6 +1,6 @@
-# ArDali Browser — Official Promotional Website
+# DaliNira Browser — Official Promotional Website
 
-Production-quality, privacy-focused, security-first static website for [ArDali Browser](https://github.com/Muhammed-Dali/ArDali-Browser).
+Production-quality, privacy-focused, security-first static website for [DaliNira Browser](https://github.com/Muhammed-Dali/DaliNira-Browser).
 
 ---
 
@@ -45,7 +45,7 @@ website/
 
 ## 3. Production Deployment: GitHub Pages
 
-The production site is published at `https://muhammed-dali.github.io/ArDali-Browser/` by the repository's `website-pages.yml` workflow. The same deployment preserves the historical pacman repository files alongside the website.
+The production site is published at `https://muhammed-dali.github.io/DaliNira-Browser/` by the repository's `website-pages.yml` workflow. The same deployment preserves the historical pacman repository files alongside the website.
 
 ### Automatic deployment
 
@@ -79,10 +79,10 @@ You can attach a custom domain in the repository's **Settings → Pages** screen
 
 After deployment, update the GitHub repository's **About** panel:
 
-1. Navigate to `https://github.com/Muhammed-Dali/ArDali-Browser`.
+1. Navigate to `https://github.com/Muhammed-Dali/DaliNira-Browser`.
 2. Click the gear icon next to **About** in the right sidebar.
 3. In the **Website** field, enter the production URL:
    ```text
-   https://muhammed-dali.github.io/ArDali-Browser/
+   https://muhammed-dali.github.io/DaliNira-Browser/
    ```
 4. Save changes.

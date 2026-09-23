@@ -3,15 +3,15 @@
 #include <string>
 #include <thread>
 
-#ifndef ARDALI_YTDLP_FIXTURE_VERSION
-#define ARDALI_YTDLP_FIXTURE_VERSION "2099.01.01"
+#ifndef DALINIRA_YTDLP_FIXTURE_VERSION
+#define DALINIRA_YTDLP_FIXTURE_VERSION "2099.01.01"
 #endif
 
 int main(int argc, char **argv) {
   for (int index = 1; index < argc; ++index) {
     const std::string argument(argv[index]);
     if (argument == "--version") {
-      std::cout << ARDALI_YTDLP_FIXTURE_VERSION << '\n';
+      std::cout << DALINIRA_YTDLP_FIXTURE_VERSION << '\n';
       return 0;
     }
     if (argument == "--hold") {
@@ -23,8 +23,8 @@ int main(int argc, char **argv) {
       return 0;
     }
   }
-  std::cout << "ARDALI_PROGRESS:100%|4096|4096|4096|0\n"
-            << "ARDALI_FILE:managed-fixture.mp4\n";
+  std::cout << "DALINIRA_PROGRESS:100%|4096|4096|4096|0\n"
+            << "DALINIRA_FILE:managed-fixture.mp4\n";
   return 0;
 }
 

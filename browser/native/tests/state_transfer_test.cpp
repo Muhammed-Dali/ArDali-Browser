@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
     return 2;
   }
 
-  QWebEngineProfile profile("ardali-state-transfer-test", &app);
+  QWebEngineProfile profile("dalinira-state-transfer-test", &app);
   profile.setPersistentStoragePath(profileDir.path() + "/profile");
   profile.setCachePath(profileDir.path() + "/cache");
   // The test fixture has no user gesture. This affects only its temporary
@@ -81,12 +81,12 @@ int main(int argc, char *argv[]) {
 
   const QString snapshotScript = QStringLiteral(R"JS(
     JSON.stringify({
-      marker: window.__ardaliTransferMarker,
+      marker: window.__daliniraTransferMarker,
       historyLength: history.length,
       scrollY: Math.round(window.scrollY),
-      mediaTime: Number((window.__ardaliAudio?.currentTime || 0).toFixed(3)),
-      mediaPlaying: !!window.__ardaliAudio && !window.__ardaliAudio.paused,
-      mediaError: window.__ardaliAudioError || ''
+      mediaTime: Number((window.__daliniraAudio?.currentTime || 0).toFixed(3)),
+      mediaPlaying: !!window.__daliniraAudio && !window.__daliniraAudio.paused,
+      mediaError: window.__daliniraAudioError || ''
     })
   )JS");
 
@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
     }
     completed = true;
     view.page()->runJavaScript(QStringLiteral(R"JS(
-      window.__ardaliTransferMarker = 'live-context-preserved';
+      window.__daliniraTransferMarker = 'live-context-preserved';
       history.pushState({ transfer: true }, '', '#detached');
       window.scrollTo(0, 240);
       const sampleRate = 8000, frames = sampleRate * 4;
@@ -109,9 +109,9 @@ int main(int argc, char *argv[]) {
       view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
       view.setUint16(32, 2, true); view.setUint16(34, 16, true); text(36, 'data'); view.setUint32(40, frames * 2, true);
       for (let i = 0; i < frames; i++) view.setInt16(44 + i * 2, Math.sin(i * 0.11) * 9000, true);
-      window.__ardaliAudio = new Audio(URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' })));
-      window.__ardaliAudio.muted = true; window.__ardaliAudio.loop = true;
-      window.__ardaliAudio.play().catch(error => { window.__ardaliAudioError = error.name || String(error); });
+      window.__daliniraAudio = new Audio(URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' })));
+      window.__daliniraAudio.muted = true; window.__daliniraAudio.loop = true;
+      window.__daliniraAudio.play().catch(error => { window.__daliniraAudioError = error.name || String(error); });
       true
     )JS"), [&](const QVariant &beforeValue) {
       Q_UNUSED(beforeValue);
@@ -174,10 +174,10 @@ int main(int argc, char *argv[]) {
 
   timeout.start(15000);
   view.setHtml(QStringLiteral(R"HTML(
-    <!doctype html><title>ArDali live transfer fixture</title>
+    <!doctype html><title>DaliNira live transfer fixture</title>
     <style>body{height:3000px;margin:0}#marker{margin-top:300px}</style>
     <div id="marker">state fixture</div>
-  )HTML"), QUrl("https://ardali-browser.test/"));
+  )HTML"), QUrl("https://dalinira-browser.test/"));
   loop.exec();
 
   detachedHost.hide();

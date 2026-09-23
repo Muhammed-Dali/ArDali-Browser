@@ -225,13 +225,13 @@ void CredentialAutofillController::removeFillButton(QWebEngineView *view) {
   if (isViewTracked(view) && view->page()) {
     static const QString kRemoveScript = QStringLiteral(R"JS((() => {
       try {
-        if (typeof window.__ardaliRemoveFillButton === 'function') {
-          window.__ardaliRemoveFillButton();
+        if (typeof window.__daliniraRemoveFillButton === 'function') {
+          window.__daliniraRemoveFillButton();
         }
-        const btn = document.querySelector('[data-ardali-autofill-btn="true"]');
+        const btn = document.querySelector('[data-dalinira-autofill-btn="true"]');
         if (btn) btn.remove();
-        window.__ardaliFillButtonInstalled = false;
-        window.__ardaliFillToken = null;
+        window.__daliniraFillButtonInstalled = false;
+        window.__daliniraFillToken = null;
       } catch (_) {}
     })())JS");
     view->page()->runJavaScript(kRemoveScript, QWebEngineScript::ApplicationWorld);
@@ -458,14 +458,14 @@ void CredentialAutofillController::installFillButton(QWebEngineView *view) {
 
 QWebEngineScript CredentialAutofillController::candidateCaptureScript() {
   QWebEngineScript script;
-  script.setName(QStringLiteral("ardali-credential-candidate-capture"));
+  script.setName(QStringLiteral("dalinira-credential-candidate-capture"));
   script.setWorldId(QWebEngineScript::ApplicationWorld);
   script.setInjectionPoint(QWebEngineScript::DocumentCreation);
   script.setRunsOnSubFrames(false);
   script.setSourceCode(QStringLiteral(R"JS((() => {
-    if (window.top !== window || window.__ardaliCredentialCaptureInstalled) return;
+    if (window.top !== window || window.__daliniraCredentialCaptureInstalled) return;
     try {
-      Object.defineProperty(window, '__ardaliCredentialCaptureInstalled', { value: true });
+      Object.defineProperty(window, '__daliniraCredentialCaptureInstalled', { value: true });
     } catch (_) {}
 
     const visible = el => {
@@ -574,7 +574,7 @@ QWebEngineScript CredentialAutofillController::candidateCaptureScript() {
       if (!username || username.length > 320 || username === lastUsername) return;
       lastUsername = username;
       try {
-        console.info('ARDALI_CREDENTIAL_STAGE:' + JSON.stringify({ origin: location.origin, username }));
+        console.info('DALINIRA_CREDENTIAL_STAGE:' + JSON.stringify({ origin: location.origin, username }));
       } catch (_) {}
     };
 
@@ -597,7 +597,7 @@ QWebEngineScript CredentialAutofillController::candidateCaptureScript() {
         if (!password || password.length > 4096) return;
         if (username) stageUsername(username);
         lastCandidateAt = now;
-        console.info('ARDALI_CREDENTIAL_CANDIDATE:' + JSON.stringify({
+        console.info('DALINIRA_CREDENTIAL_CANDIDATE:' + JSON.stringify({
           origin: location.origin,
           username: username.slice(0, 320),
           password: password.slice(0, 4096),
@@ -616,7 +616,7 @@ QWebEngineScript CredentialAutofillController::candidateCaptureScript() {
       attemptNonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
       capture(scope, true);
       try {
-        console.info('ARDALI_CREDENTIAL_SUBMIT:' + JSON.stringify({
+        console.info('DALINIRA_CREDENTIAL_SUBMIT:' + JSON.stringify({
           origin: location.origin,
           nonce: attemptNonce
         }));
@@ -628,7 +628,7 @@ QWebEngineScript CredentialAutofillController::candidateCaptureScript() {
     const successHint = () => {
       if (!loginSubmitted || Date.now() - loginSubmittedAt > 12000) return;
       try {
-        console.info('ARDALI_CREDENTIAL_SUCCESS_HINT:' + JSON.stringify({
+        console.info('DALINIRA_CREDENTIAL_SUCCESS_HINT:' + JSON.stringify({
           origin: location.origin,
           loginFormVisible: false,
           passwordFieldVisible: false,
@@ -730,27 +730,27 @@ QString CredentialAutofillController::fillButtonScript(const QString &token) {
     if (window.top !== window) return;
 
     const payload = %1;
-    window.__ardaliFillToken = payload.token;
+    window.__daliniraFillToken = payload.token;
 
-    if (window.__ardaliFillButtonInstalled) {
+    if (window.__daliniraFillButtonInstalled) {
       return;
     }
-    window.__ardaliFillButtonInstalled = true;
+    window.__daliniraFillButtonInstalled = true;
 
     let managedButton = null;
     let currentTarget = null;
     let isInteracting = false;
     let hideTimer = null;
 
-    window.__ardaliRemoveFillButton = () => {
+    window.__daliniraRemoveFillButton = () => {
       clearTimeout(hideTimer);
       if (managedButton) {
         managedButton.remove();
         managedButton = null;
       }
       currentTarget = null;
-      window.__ardaliFillButtonInstalled = false;
-      window.__ardaliFillToken = null;
+      window.__daliniraFillButtonInstalled = false;
+      window.__daliniraFillToken = null;
     };
 
     const visible = el => {
@@ -824,15 +824,15 @@ QString CredentialAutofillController::fillButtonScript(const QString &token) {
     };
 
     const showButtonForField = (field) => {
-      if (!window.__ardaliFillButtonInstalled || !isCredentialField(field)) return;
+      if (!window.__daliniraFillButtonInstalled || !isCredentialField(field)) return;
       currentTarget = field;
       if (!managedButton) {
         managedButton = document.createElement('button');
         managedButton.type = 'button';
         managedButton.textContent = '🔑';
-        managedButton.title = 'ArDali Şifre Yöneticisi — Otomatik Doldur';
+        managedButton.title = 'DaliNira Şifre Yöneticisi — Otomatik Doldur';
         managedButton.setAttribute('aria-label', managedButton.title);
-        managedButton.setAttribute('data-ardali-autofill-btn', 'true');
+        managedButton.setAttribute('data-dalinira-autofill-btn', 'true');
         Object.assign(managedButton.style, {
           position: 'fixed',
           zIndex: '2147483647',
@@ -879,8 +879,8 @@ QString CredentialAutofillController::fillButtonScript(const QString &token) {
           if (now - lastTriggerAt < 400) return;
           lastTriggerAt = now;
           try {
-            const activeTok = window.__ardaliFillToken || payload.token;
-            console.info('ARDALI_CREDENTIAL_FILL_REQUEST:' + JSON.stringify({
+            const activeTok = window.__daliniraFillToken || payload.token;
+            console.info('DALINIRA_CREDENTIAL_FILL_REQUEST:' + JSON.stringify({
               origin: location.origin,
               token: activeTok
             }));
@@ -898,7 +898,7 @@ QString CredentialAutofillController::fillButtonScript(const QString &token) {
     };
 
     const scanAndAttach = () => {
-      if (!window.__ardaliFillButtonInstalled) return;
+      if (!window.__daliniraFillButtonInstalled) return;
       // In SPA or dynamic DOM changes, expose the same action on a reliably
       // associated login identifier or its password field.
       const active = document.activeElement;
@@ -914,7 +914,7 @@ QString CredentialAutofillController::fillButtonScript(const QString &token) {
     };
 
     document.addEventListener('focusin', event => {
-      if (!window.__ardaliFillButtonInstalled) return;
+      if (!window.__daliniraFillButtonInstalled) return;
       clearTimeout(hideTimer);
       const target = event.target;
       if (target instanceof HTMLInputElement && isCredentialField(target)) {
@@ -927,7 +927,7 @@ QString CredentialAutofillController::fillButtonScript(const QString &token) {
     }, true);
 
     document.addEventListener('focusout', event => {
-      if (!window.__ardaliFillButtonInstalled) return;
+      if (!window.__daliniraFillButtonInstalled) return;
       if (event.target === currentTarget) {
         clearTimeout(hideTimer);
         hideTimer = setTimeout(() => {
@@ -939,7 +939,7 @@ QString CredentialAutofillController::fillButtonScript(const QString &token) {
     }, true);
 
     document.addEventListener('pointerdown', event => {
-      if (!window.__ardaliFillButtonInstalled) return;
+      if (!window.__daliniraFillButtonInstalled) return;
       const target = event.target;
       if (target === managedButton || managedButton?.contains(target)) {
         isInteracting = true;
@@ -958,17 +958,17 @@ QString CredentialAutofillController::fillButtonScript(const QString &token) {
     }, true);
 
     window.addEventListener('scroll', () => {
-      if (!window.__ardaliFillButtonInstalled) return;
+      if (!window.__daliniraFillButtonInstalled) return;
       updatePosition();
     }, { passive: true, capture: true });
 
     window.addEventListener('resize', () => {
-      if (!window.__ardaliFillButtonInstalled) return;
+      if (!window.__daliniraFillButtonInstalled) return;
       updatePosition();
     }, { passive: true });
 
     new MutationObserver(() => {
-      if (!window.__ardaliFillButtonInstalled) return;
+      if (!window.__daliniraFillButtonInstalled) return;
       scanAndAttach();
     }).observe(document.documentElement || document.body, {
       childList: true, subtree: true, attributes: true,
@@ -995,7 +995,7 @@ QString CredentialAutofillController::domFillScript(const QString &origin, const
     const v = %1;
     if (location.origin !== v.origin) return false;
     if (v.url && location.href !== v.url) return false;
-    if (v.documentToken && window.__ardaliFillToken !== v.documentToken) return false;
+    if (v.documentToken && window.__daliniraFillToken !== v.documentToken) return false;
 
     const visible = el => {
       if (!el || !el.isConnected) return false;
@@ -1105,7 +1105,7 @@ QString CredentialAutofillController::loginStateQueryScript() {
 }
 
 bool CredentialAutofillController::handleConsoleMessage(QWebEnginePage *page, const QString &message) {
-  if (!message.startsWith(QLatin1String("ARDALI_CREDENTIAL_"))) {
+  if (!message.startsWith(QLatin1String("DALINIRA_CREDENTIAL_"))) {
     return false;
   }
 
@@ -1114,12 +1114,12 @@ bool CredentialAutofillController::handleConsoleMessage(QWebEnginePage *page, co
     return true;
   }
 
-  static constexpr auto kPrefixCandidate = "ARDALI_CREDENTIAL_CANDIDATE:";
-  static constexpr auto kPrefixStage = "ARDALI_CREDENTIAL_STAGE:";
-  static constexpr auto kPrefixSubmit = "ARDALI_CREDENTIAL_SUBMIT:";
-  static constexpr auto kPrefixSuccess = "ARDALI_CREDENTIAL_SUCCESS_HINT:";
-  static constexpr auto kPrefixState = "ARDALI_CREDENTIAL_STATE:";
-  static constexpr auto kPrefixFill = "ARDALI_CREDENTIAL_FILL_REQUEST:";
+  static constexpr auto kPrefixCandidate = "DALINIRA_CREDENTIAL_CANDIDATE:";
+  static constexpr auto kPrefixStage = "DALINIRA_CREDENTIAL_STAGE:";
+  static constexpr auto kPrefixSubmit = "DALINIRA_CREDENTIAL_SUBMIT:";
+  static constexpr auto kPrefixSuccess = "DALINIRA_CREDENTIAL_SUCCESS_HINT:";
+  static constexpr auto kPrefixState = "DALINIRA_CREDENTIAL_STATE:";
+  static constexpr auto kPrefixFill = "DALINIRA_CREDENTIAL_FILL_REQUEST:";
 
   if (message.startsWith(QLatin1String(kPrefixCandidate))) {
     handleCandidate(page, message.mid(int(std::char_traits<char>::length(kPrefixCandidate))));

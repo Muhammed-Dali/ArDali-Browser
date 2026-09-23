@@ -1,15 +1,15 @@
 <p align="center">
-  <img src="docs/images/ardali-icon.png" width="128" height="128" alt="ArDali Browser Logo">
+  <img src="docs/images/dalinira-icon.png" width="128" height="128" alt="DaliNira Browser Logo">
 </p>
 
-<h1 align="center">ArDali Browser</h1>
+<h1 align="center">DaliNira Browser</h1>
 
 <p align="center">
   <strong>A privacy-focused, high-performance Qt 6 / C++20 desktop web browser featuring an adaptive parallel download engine and an integrated audiophile DSP sound system.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases/tag/v7.2.0"><img src="https://img.shields.io/badge/release-v7.2.0-007ACC.svg?style=flat-square" alt="Release v7.2.0"></a>
+  <a href="https://github.com/Muhammed-Dali/DaliNira-Browser/releases/tag/v7.2.0"><img src="https://img.shields.io/badge/release-v7.2.0-007ACC.svg?style=flat-square" alt="Release v7.2.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--only-success.svg?style=flat-square" alt="License GPL-3.0"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B" alt="C++20">
   <img src="https://img.shields.io/badge/Qt-6.4+-41CD52.svg?style=flat-square&logo=qt" alt="Qt 6">
@@ -24,24 +24,24 @@
 
 | Installation Method | Command / Source | Description |
 |---|---|---|
-| **AUR** | `yay -S ardali` | Precompiled Linux x86_64 package from the Arch User Repository |
-| **ArDali Pacman Repo** | `sudo pacman -Syu ardali` | Binary package from the ArDali repository *(configure it first)* |
-| **GitHub Releases** | [Releases Page](https://github.com/Muhammed-Dali/ArDali-Browser/releases) | Precompiled standalone `.tar.zst` bundles and source tarballs |
-| **Official Website** | [ArDali Browser Website](https://muhammed-dali.github.io/ArDali-Browser/) | Product overview, features, screenshots, and download links |
+| **AUR** | `yay -S dalinira` | Precompiled Linux x86_64 package from the Arch User Repository |
+| **DaliNira Pacman Repo** | `sudo pacman -Syu dalinira` | Binary package from the DaliNira repository *(configure it first)* |
+| **GitHub Releases** | [Releases Page](https://github.com/Muhammed-Dali/DaliNira-Browser/releases) | Precompiled standalone `.tar.zst` bundles and source tarballs |
+| **Official Website** | [DaliNira Browser Website](https://muhammed-dali.github.io/DaliNira-Browser/) | Product overview, features, screenshots, and download links |
 
 ---
 
 <p align="center">
-  <img src="docs/images/ardali-browser.png" width="100%" alt="ArDali Browser Hero Interface">
+  <img src="docs/images/dalinira-browser.png" width="100%" alt="DaliNira Browser Hero Interface">
 </p>
 
 ---
 
 ## About the Project
 
-**ArDali Browser** is an independent, native Qt 6 / C++20 desktop web browser engineered to unite modern web standards, rigorous personal privacy, high-throughput file downloading, and studio-grade sound reproduction.
+**DaliNira Browser** is an independent, native Qt 6 / C++20 desktop web browser engineered to unite modern web standards, rigorous personal privacy, high-throughput file downloading, and studio-grade sound reproduction.
 
-Built on top of the Chromium-powered **Qt WebEngine** foundation, ArDali Browser delivers a full-featured internet experience without relying on bloated third-party extensions or intrusive cloud synchronizations. Everything operates locally on your device: an ad and tracking blocker, an adaptive segmented download manager, an encrypted password vault, instant music recognition, and a 32-band peaking equalizer with over 1,750 calibrated AutoEQ headphone correction profiles.
+Built on top of the Chromium-powered **Qt WebEngine** foundation, DaliNira Browser delivers a full-featured internet experience without relying on bloated third-party extensions or intrusive cloud synchronizations. Everything operates locally on your device: an ad and tracking blocker, an adaptive segmented download manager, an encrypted password vault, instant music recognition, and a 32-band peaking equalizer with over 1,750 calibrated AutoEQ headphone correction profiles.
 
 ---
 
@@ -51,11 +51,11 @@ Built on top of the Chromium-powered **Qt WebEngine** foundation, ArDali Browser
 - **Hardware-Accelerated WebEngine:** Zero-copy GPU video decoding pipelines, early driver initialization, a child subprocess memory allocator, and active memory pressure monitoring.
 - **GeneralDownloadManager (Adaptive Parallel Engine):** Multi-stream downloader that automatically scales connections from **1 → 2 → 4 → 8** parallel streams, featuring dynamic work-stealing, chunk pre-allocation, part-level retries, and HTTP 429 throttling backoff.
 - **Smart Omnibox Navigation:** Composite candidate ranking engine combining browser history, bookmarks, and frequent sites with domain normalization and real-time search suggestions (DuckDuckGo, Google, Brave, Bing).
-- **ArDali Blocker & Privacy Shield:** Three protection modes (Basic, Balanced, and Aggressive) supporting network request interception, CSS cosmetic filtering, scriptlet injection, and tracking parameter stripping.
+- **DaliNira Blocker & Privacy Shield:** Three protection modes (Basic, Balanced, and Aggressive) supporting network request interception, CSS cosmetic filtering, scriptlet injection, and tracking parameter stripping.
 - **Zero-Cloud Encrypted Password Vault:** AES-256-GCM encryption with PBKDF2-HMAC-SHA256 key derivation. Completely local, zero-leak credential storage with intelligent in-page autofill and save prompts.
 - **Granular Origin Permissions (Site Controls):** Instant toolbar bubble to monitor and toggle permissions per site for Camera, Microphone, Geolocation, Notifications, Popups, and JavaScript optimization, backed by automatic hygiene policies.
 - **DALI Web Audio & 1,757 AutoEQ Presets:** 32-band peaking equalizer, BASS FX Reverb, Dynamic Compressor, Brickwall Limiter, Stereo Widener, and factory-calibrated frequency curves for thousands of audiophile headphones.
-- **ArDali Pulse (Song Recognition):** Built-in audio analyzer that identifies playing music directly from system audio or microphone input without third-party services.
+- **DaliNira Pulse (Song Recognition):** Built-in audio analyzer that identifies playing music directly from system audio or microphone input without third-party services.
 - **Seamless Linux Desktop Integration:** Strict XDG desktop standards, complete hicolor icon sets (16px through 1024px), and Wayland/X11 compatibility.
 
 ---
@@ -64,19 +64,19 @@ Built on top of the Chromium-powered **Qt WebEngine** foundation, ArDali Browser
 
 ### 1. Modern Desktop Interface & Smart New Tab Experience
 
-> **Main Browser Window & New Tab Page (`ardali://newtab`)**
+> **Main Browser Window & New Tab Page (`dalinira://newtab`)**
 >
-> The hero image above presents ArDali Browser's distraction-free desktop interface and customizable New Tab page. Users can choose colorful backgrounds, clock styles and positions, switch search engines, recall saved searches through autocomplete, open frequently visited sites, and monitor real-time blocked-request statistics. The top tab strip adds memory-aware hover cards, animated loading indicators, and an optional bookmarks bar.
+> The hero image above presents DaliNira Browser's distraction-free desktop interface and customizable New Tab page. Users can choose colorful backgrounds, clock styles and positions, switch search engines, recall saved searches through autocomplete, open frequently visited sites, and monitor real-time blocked-request statistics. The top tab strip adds memory-aware hover cards, animated loading indicators, and an optional bookmarks bar.
 
 ---
 
-### 2. ArDali Blocker — Integrated Ad and Tracker Protection
+### 2. DaliNira Blocker — Integrated Ad and Tracker Protection
 
-![ArDali Blocker](docs/images/ardali-blocker.png)
+![DaliNira Blocker](docs/images/dalinira-blocker.png)
 
-> **ArDali Blocker Dashboard (`ardali://blocker`)**
+> **DaliNira Blocker Dashboard (`dalinira://blocker`)**
 >
-> Designed to preserve bandwidth and privacy, ArDali Blocker offers three distinct operational tiers: **Basic (35% - Light)**, **Ideal (65% - Balanced)**, and **Comprehensive (95% - Strict)**. It evaluates EasyList, EasyPrivacy, Peter Lowe, and regional filter lists locally. Advanced cosmetic filtering eliminates blank ad spaces, scriptlet injection mitigates anti-adblock mechanisms, and strict blocking prevents unwanted popups.
+> Designed to preserve bandwidth and privacy, DaliNira Blocker offers three distinct operational tiers: **Basic (35% - Light)**, **Ideal (65% - Balanced)**, and **Comprehensive (95% - Strict)**. It evaluates EasyList, EasyPrivacy, Peter Lowe, and regional filter lists locally. Advanced cosmetic filtering eliminates blank ad spaces, scriptlet injection mitigates anti-adblock mechanisms, and strict blocking prevents unwanted popups.
 
 ---
 
@@ -84,19 +84,19 @@ Built on top of the Chromium-powered **Qt WebEngine** foundation, ArDali Browser
 
 ![Password Manager](docs/images/password-manager.png)
 
-> **Secure Local Vault (`ardali://passwords`)**
+> **Secure Local Vault (`dalinira://passwords`)**
 >
-> Your passwords are never transmitted to cloud servers. ArDali's Credential Vault uses **PBKDF2** key derivation and **AES-256-GCM** encryption to safeguard credentials in isolated disk storage. When login fields are detected, the browser securely offers autofill options, while newly entered credentials can be added to the master-password-protected vault with a single click.
+> Your passwords are never transmitted to cloud servers. DaliNira's Credential Vault uses **PBKDF2** key derivation and **AES-256-GCM** encryption to safeguard credentials in isolated disk storage. When login fields are detected, the browser securely offers autofill options, while newly entered credentials can be added to the master-password-protected vault with a single click.
 
 ---
 
-### 4. ArDali Pulse — Real-Time Music & Audio Recognition
+### 4. DaliNira Pulse — Real-Time Music & Audio Recognition
 
-![ArDali Pulse](docs/images/ardali-pulse.png)
+![DaliNira Pulse](docs/images/dalinira-pulse.png)
 
-> **Song Finder & Spectrum Analyzer (`ardali://song-finder`)**
+> **Song Finder & Spectrum Analyzer (`dalinira://song-finder`)**
 >
-> Whether music is playing in a browser tab or any other desktop application, ArDali Pulse captures and identifies the track within seconds using system audio or microphone input. Recognition history, artist names, and album details are archived locally for quick reference.
+> Whether music is playing in a browser tab or any other desktop application, DaliNira Pulse captures and identifies the track within seconds using system audio or microphone input. Recognition history, artist names, and album details are archived locally for quick reference.
 
 ---
 
@@ -104,7 +104,7 @@ Built on top of the Chromium-powered **Qt WebEngine** foundation, ArDali Browser
 
 ![Downloads Manager](docs/images/downloads.png)
 
-> **Downloads Center (`ardali://downloads`) & Toolbar Download Popup**
+> **Downloads Center (`dalinira://downloads`) & Toolbar Download Popup**
 >
 > Powered by the **GeneralDownloadManager** engine, the browser analyzes incoming links and leverages HTTP `Range` headers to split files into concurrent chunks. The engine dynamically ramps connection counts from **1 → 2 → 4 → 8** streams depending on latency and server capabilities, resumes interrupted downloads from the exact byte, and performs automatic chunk-level retries.
 
@@ -114,7 +114,7 @@ Built on top of the Chromium-powered **Qt WebEngine** foundation, ArDali Browser
 
 ![Audio Effects and Equalizer](docs/images/audio-effects.png)
 
-> **DALI Web Audio Processing Suite (`ardali://audio-effects` & `ardali://eq-presets`)**
+> **DALI Web Audio Processing Suite (`dalinira://audio-effects` & `dalinira://eq-presets`)**
 >
 > Geared toward audiophiles, this system routes web media through 32 precision peaking filters. The suite features **BASS FX Reverb, Dynamic Compressor, Brickwall Limiter, True Peak Limiter, Parametric EQ, Dynamic EQ, Harmonic Exciter, De-esser, Intelligent Noise Gate, Stereo Widener v2, and Echo**. Furthermore, **1,757 calibrated AutoEQ headphone profiles** (covering Sony, Sennheiser, AKG, Beyerdynamic, Apple, Bose, and Audio-Technica) are bundled out of the box.
 
@@ -124,30 +124,30 @@ Built on top of the Chromium-powered **Qt WebEngine** foundation, ArDali Browser
 
 ### 1. Arch Linux / Manjaro (AUR)
 
-ArDali Browser is officially packaged in the Arch User Repository:
+DaliNira Browser is officially packaged in the Arch User Repository:
 
 Install the precompiled x86_64 package:
 
 ```bash
-yay -S ardali
+yay -S dalinira
 ```
 
 ---
 
-### 2. Official ArDali Pacman Repository (Signed)
+### 2. Official DaliNira Pacman Repository (Signed)
 
 All packages and repository databases are cryptographically signed with the official GPG release key (`BC741FD0AC804351B0DDBB86FDFEC60C11202588`).
 
-You can automatically import the GPG signing key, register the repository into `/etc/pacman.conf`, and install ArDali Browser without manually editing configuration files:
+You can automatically import the GPG signing key, register the repository into `/etc/pacman.conf`, and install DaliNira Browser without manually editing configuration files:
 
 ```bash
 # 1. Import and locally trust the official GPG signing key
-curl -sL https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/pacman-repo/ardali.gpg | sudo pacman-key --add -
+curl -sL https://github.com/Muhammed-Dali/DaliNira-Browser/releases/download/pacman-repo/dalinira.gpg | sudo pacman-key --add -
 sudo pacman-key --lsign-key BC741FD0AC804351B0DDBB86FDFEC60C11202588
 
 # 2. Add the repository to pacman.conf and install
-echo -e "\n[ardali]\nSigLevel = Required DatabaseOptional\nServer = https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/pacman-repo" | sudo tee -a /etc/pacman.conf
-sudo pacman -Syu ardali
+echo -e "\n[dalinira]\nSigLevel = Required DatabaseOptional\nServer = https://github.com/Muhammed-Dali/DaliNira-Browser/releases/download/pacman-repo" | sudo tee -a /etc/pacman.conf
+sudo pacman -Syu dalinira
 ```
 
 ---
@@ -156,11 +156,11 @@ sudo pacman -Syu ardali
 
 For a direct, package-manager-free installation:
 
-1. Download the latest `ardali-browser-7.2.0-linux-x86_64.tar.zst` from the [GitHub Releases](https://github.com/Muhammed-Dali/ArDali-Browser/releases) page.
+1. Download the latest `dalinira-browser-7.2.0-linux-x86_64.tar.zst` from the [GitHub Releases](https://github.com/Muhammed-Dali/DaliNira-Browser/releases) page.
 2. Extract the archive and merge the directory tree into `/usr`:
 
 ```bash
-tar -I zstd -xvf ardali-browser-7.2.0-linux-x86_64.tar.zst
+tar -I zstd -xvf dalinira-browser-7.2.0-linux-x86_64.tar.zst
 sudo cp -r usr/* /usr/
 ```
 
@@ -170,7 +170,7 @@ sudo cp -r usr/* /usr/
 
 ### 1. System Prerequisites
 
-Building ArDali Browser requires a C++20-compliant compiler, CMake, Ninja, and Qt 6 development libraries:
+Building DaliNira Browser requires a C++20-compliant compiler, CMake, Ninja, and Qt 6 development libraries:
 
 **Arch Linux / Manjaro:**
 ```bash
@@ -200,8 +200,8 @@ sudo dnf install gcc-c++ cmake ninja-build git nodejs \
 
 ```bash
 # Clone the repository
-git clone https://github.com/Muhammed-Dali/ArDali-Browser.git
-cd ArDali-Browser
+git clone https://github.com/Muhammed-Dali/DaliNira-Browser.git
+cd DaliNira-Browser
 
 # Configure with CMake (Release mode)
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -215,7 +215,7 @@ cmake --build build -j$(nproc)
 Run the browser directly from the build directory:
 
 ```bash
-./build/ardali-browser
+./build/dalinira-browser
 ```
 
 Execute the full automated test suite:
@@ -269,12 +269,12 @@ address one concern.
 
 ### Core Source Layout
 
-ArDali Browser employs a clean, decoupled C++ module structure:
+DaliNira Browser employs a clean, decoupled C++ module structure:
 
 - **`browser/native/core/`**: Profile lifecycle, smart address input resolver, async search suggestions, and GPU hardware acceleration.
 - **`browser/native/desktop_tabs/`**: Tab layout engine, tab drag-and-drop controller, tab hover memory cards, and memory pressure monitoring.
 - **`browser/native/downloads/`**: `GeneralDownloadManager` adaptive multi-connection engine, transfer UI models, and platform registries.
-- **`browser/native/blocker/`**: `ArDaliBlockerEngine`, cosmetic CSS injection runtime, ruleset list manager, and toolbar shield button.
+- **`browser/native/blocker/`**: `DaliNiraBlockerEngine`, cosmetic CSS injection runtime, ruleset list manager, and toolbar shield button.
 - **`browser/native/passwords/`**: Encrypted `CredentialVault`, `DeviceKeyring` OS secret service binding, autofill coordinator, and credential save bubbles.
 - **`browser/native/audio/` & `browser/native/eq/`**: Web Audio DSP pipeline, 32-band peaking equalizer, and 1,757 AutoEQ JSON profiles.
 - **`browser/native/pulse/`**: `SongRecognitionService` real-time audio capture and music recognition.
@@ -285,6 +285,6 @@ ArDali Browser employs a clean, decoupled C++ module structure:
 
 ## License & Third-Party Notices
 
-- **ArDali Browser**: Licensed under the [GNU General Public License v3.0](LICENSE).
+- **DaliNira Browser**: Licensed under the [GNU General Public License v3.0](LICENSE).
 - **AdBlock Filters & Rulesets**: EasyList, EasyPrivacy, Peter Lowe, and community filter lists retain their respective copyrights and licenses. See [NOTICE.txt](browser/resources/adblock/NOTICE.txt) for full details.
 - **AutoEQ Profiles**: Derived from calibrated headphone frequency response curves curated by Jaakko Pasanen and the AutoEQ project.

@@ -28,9 +28,9 @@
 #include "newtab/new_tab_html.h"
 #include "newtab/new_tab_background_store.h"
 #include "newtab/new_tab_scheme.h"
-#include "blocker/ardali_blocker_service.h"
-#include "blocker/ardali_blocker_settings.h"
-#include "blocker/ardali_blocker_types.h"
+#include "blocker/dalinira_blocker_service.h"
+#include "blocker/dalinira_blocker_settings.h"
+#include "blocker/dalinira_blocker_types.h"
 
 namespace {
 
@@ -43,7 +43,7 @@ class EvidencePage final : public QWebEnginePage {
   }
 };
 
-class MockProfileDataProvider final : public ardali::core::IBrowserProfileDataProvider {
+class MockProfileDataProvider final : public dalinira::core::IBrowserProfileDataProvider {
  public:
   QList<BrowserHistoryEntry> history;
   QList<BrowserFrequentSite> frequent;
@@ -162,20 +162,20 @@ void testSearchHistoryPersistenceAndClearing() {
 }
 
 void testAntiPoisoningConfidence() {
-  ardali::core::NavigationCandidate passive;
+  dalinira::core::NavigationCandidate passive;
   passive.hasExactTokenMatch = true;
   passive.isExactDomainMatch = true;
   passive.visitCount = 1;
-  assert(ardali::core::CandidateScoringConfig::calculateConfidence(passive) == 0.40);
-  assert(ardali::core::CandidateScoringConfig::calculateConfidence(passive)
-         < ardali::core::CandidateScoringConfig::kMinConfidenceThreshold);
+  assert(dalinira::core::CandidateScoringConfig::calculateConfidence(passive) == 0.40);
+  assert(dalinira::core::CandidateScoringConfig::calculateConfidence(passive)
+         < dalinira::core::CandidateScoringConfig::kMinConfidenceThreshold);
 
-  ardali::core::NavigationCandidate typed = passive;
+  dalinira::core::NavigationCandidate typed = passive;
   typed.typedCount = 1;
   typed.hasTypedEvidence = true;
-  assert(ardali::core::CandidateScoringConfig::calculateConfidence(typed) == 0.85);
-  assert(ardali::core::CandidateScoringConfig::calculateConfidence(typed)
-         >= ardali::core::CandidateScoringConfig::kMinConfidenceThreshold);
+  assert(dalinira::core::CandidateScoringConfig::calculateConfidence(typed) == 0.85);
+  assert(dalinira::core::CandidateScoringConfig::calculateConfidence(typed)
+         >= dalinira::core::CandidateScoringConfig::kMinConfidenceThreshold);
 }
 
 void testNewTabDataAndScriptSafety() {
@@ -228,7 +228,7 @@ void testNewTabDataAndScriptSafety() {
   assert(html.contains(QStringLiteral("suggestionCommandUrl('delete-history'")));
   assert(html.contains(QStringLiteral("attack<\\/script><script>alert(1)<\\/script>")));
   assert(!html.contains(maliciousTitle));
-  assert(html.contains(QStringLiteral("window.ardaliTopSiteSources")));
+  assert(html.contains(QStringLiteral("window.daliniraTopSiteSources")));
   assert(html.contains(QStringLiteral("id=\"protection-card-value\">37")));
   assert(html.contains(QStringLiteral("Engellenen öğeler")));
   assert(html.contains(QStringLiteral("id=\"downloads-card-value\">4")));
@@ -245,7 +245,7 @@ void testNewTabDataAndScriptSafety() {
   const QString updateScript = newTabTopSitesUpdateScript(frequent, bookmarks);
   assert(updateScript.contains(QStringLiteral("window.renderFrequentSites")));
   assert(updateScript.contains(QStringLiteral("https://example.com/")));
-  assert(newTabProtectionStatsUpdateScript(91, 6).contains(QStringLiteral("ardaliSetProtectionStats(91,6)")));
+  assert(newTabProtectionStatsUpdateScript(91, 6).contains(QStringLiteral("daliniraSetProtectionStats(91,6)")));
 }
 
 }  // namespace
@@ -254,22 +254,34 @@ static void testPlaceholdersAndCachedFavicon() {
   const QString generatedNewTab = newTabHtml(
       QStringLiteral("DuckDuckGo"), {}, {}, 0, 0, 0, true, true,
       QStringLiteral("all_time"), QStringLiteral("asset-capability"));
-  assert(generatedNewTab.contains(QStringLiteral("ardali://newtab-background?op=")));
+  assert(generatedNewTab.contains(QStringLiteral("dalinira://newtab-background?op=")));
   assert(generatedNewTab.contains(QStringLiteral("const managedBackgroundCapability=\"asset-capability\"")));
   assert(generatedNewTab.contains(QStringLiteral("managed-background-thumbnail'+managedQuery")));
-  assert(!generatedNewTab.contains(QStringLiteral("window.ardaliNewTabCommand=")));
-  assert(ardali::core::searchEngineIconAsset(QStringLiteral("Google")) == QStringLiteral("google.ico"));
-  assert(ardali::core::searchEngineIconAsset(QStringLiteral("DuckDuckGo")) == QStringLiteral("duckduckgo.ico"));
-  assert(ardali::core::searchEngineIconAsset(QStringLiteral("Brave Search")) == QStringLiteral("brave.ico"));
-  assert(ardali::core::searchEngineIconAsset(QStringLiteral("Bing")) == QStringLiteral("bing.ico"));
-  assert(ardali::core::searchEngineResourcePath(QStringLiteral("Google")) == QStringLiteral(":/search-engines/google.ico"));
+  assert(!generatedNewTab.contains(QStringLiteral("window.daliniraNewTabCommand=")));
+  assert(dalinira::core::searchEngineIconAsset(QStringLiteral("Google")) == QStringLiteral("google.ico"));
+  assert(dalinira::core::searchEngineIconAsset(QStringLiteral("DuckDuckGo")) == QStringLiteral("duckduckgo.ico"));
+  assert(dalinira::core::searchEngineIconAsset(QStringLiteral("Startpage")) == QStringLiteral("startpage.ico"));
+  assert(dalinira::core::searchEngineIconAsset(QStringLiteral("Mojeek")) == QStringLiteral("mojeek.ico"));
+  assert(dalinira::core::searchEngineIconAsset(QStringLiteral("Brave Search")) == QStringLiteral("google.ico"));
+  assert(dalinira::core::searchEngineIconAsset(QStringLiteral("Bing")) == QStringLiteral("google.ico"));
+  assert(dalinira::core::searchEngineResourcePath(QStringLiteral("Google")) == QStringLiteral(":/search-engines/google.ico"));
   assert(searchEnginePlaceholder(QStringLiteral("Google")) == QStringLiteral("Google'da arayın veya URL'yi yazın"));
   assert(searchEnginePlaceholder(QStringLiteral("DuckDuckGo")) == QStringLiteral("DuckDuckGo'da arayın veya URL'yi yazın"));
-  assert(searchEnginePlaceholder(QStringLiteral("Brave Search")) == QStringLiteral("Brave Search'te arayın veya URL'yi yazın"));
-  assert(searchEnginePlaceholder(QStringLiteral("Bing")) == QStringLiteral("Bing'de arayın veya URL'yi yazın"));
+  assert(searchEnginePlaceholder(QStringLiteral("Startpage")) == QStringLiteral("Startpage'de arayın veya URL'yi yazın"));
+  assert(searchEnginePlaceholder(QStringLiteral("Mojeek")) == QStringLiteral("Mojeek'te arayın veya URL'yi yazın"));
+  assert(searchEnginePlaceholder(QStringLiteral("Brave Search")) == QStringLiteral("Google'da arayın veya URL'yi yazın"));
+  assert(searchEnginePlaceholder(QStringLiteral("Bing")) == QStringLiteral("Google'da arayın veya URL'yi yazın"));
   QTemporaryDir dir;
   BrowserProfileService service(dir.path(), nullptr);
   assert(service.searchEngine() == QStringLiteral("DuckDuckGo"));
+  service.setSearchEngine(QStringLiteral("Startpage"));
+  assert(service.searchEngine() == QStringLiteral("Startpage"));
+  service.setSearchEngine(QStringLiteral("Mojeek"));
+  assert(service.searchEngine() == QStringLiteral("Mojeek"));
+  service.setSearchEngine(QStringLiteral("Brave Search"));
+  assert(service.searchEngine() == QStringLiteral("Google"));
+  service.setSearchEngine(QStringLiteral("Bing"));
+  assert(service.searchEngine() == QStringLiteral("Google"));
   service.setSearchEngine(QStringLiteral("DuckDuckGo"));
   QImage image(32, 32, QImage::Format_ARGB32);
   image.fill(Qt::green);
@@ -323,7 +335,7 @@ static void testPlaceholdersAndCachedFavicon() {
   QObject::connect(&page, &QWebEnginePage::loadFinished, &loadLoop, &QEventLoop::quit);
   QTimer::singleShot(10000, &loadLoop, &QEventLoop::quit);
   // A stale URL parameter must not override the profile's authoritative engine.
-  page.load(QUrl(QStringLiteral("ardali://newtab/?engine=Google")));
+  page.load(QUrl(QStringLiteral("dalinira://newtab/?engine=Google")));
   loadLoop.exec();
   QEventLoop evalLoop;
   bool passed = false;
@@ -367,19 +379,19 @@ static void testPlaceholdersAndCachedFavicon() {
     if(!clockWidget.hidden)return false;
     document.querySelector('#clock-toggle').click();
     document.querySelector('#cards-toggle').click();
-    const saved=JSON.parse(localStorage.getItem('ardali.newtab')||'{}');
+    const saved=JSON.parse(localStorage.getItem('dalinira.newtab')||'{}');
     if(!saved.backgroundVisible||!saved.backgroundPreferenceSet||saved.backgroundSource!=='gradient-violet'||document.body.classList.contains('background-hidden')||saved.clockStyle!=='digital'||saved.clockPosition!=='bottom-right'||!saved.clock||saved.cards!==false||!document.querySelector('#cards').hidden||!clockWidget.classList.contains('style-digital')||!clockWidget.classList.contains('position-bottom-right'))return false;
-    window.ardaliBackgroundResult(true,'',true,123,true);
-    if(JSON.parse(localStorage.getItem('ardali.newtab')).backgroundSource!=='custom'||!document.documentElement.style.getPropertyValue('--new-tab-background').includes('managed-background?v=123')||document.querySelector('#custom-background-card').hidden||document.querySelector('#background-remove').hidden)return false;
+    window.daliniraBackgroundResult(true,'',true,123,true);
+    if(JSON.parse(localStorage.getItem('dalinira.newtab')).backgroundSource!=='custom'||!document.documentElement.style.getPropertyValue('--new-tab-background').includes('managed-background?v=123')||document.querySelector('#custom-background-card').hidden||document.querySelector('#background-remove').hidden)return false;
     document.querySelector('#background-toggle').click();
-    if(JSON.parse(localStorage.getItem('ardali.newtab')).backgroundSource!=='custom'||!document.body.classList.contains('background-hidden'))return false;
+    if(JSON.parse(localStorage.getItem('dalinira.newtab')).backgroundSource!=='custom'||!document.body.classList.contains('background-hidden'))return false;
     document.querySelector('[data-background="builtin"]').click();
     document.querySelector('[data-background="custom"]').click();
-    if(JSON.parse(localStorage.getItem('ardali.newtab')).backgroundSource!=='custom'||document.body.classList.contains('background-hidden'))return false;
-    window.ardaliSetSearchEngine('Google');
+    if(JSON.parse(localStorage.getItem('dalinira.newtab')).backgroundSource!=='custom'||document.body.classList.contains('background-hidden'))return false;
+    window.daliniraSetSearchEngine('Google');
     if(input.placeholder!=="Google'da arayın veya URL'yi yazın" || !input.matches(':placeholder-shown'))return false;
     input.value='keep this text';
-    window.ardaliSetSearchEngine('DuckDuckGo');
+    window.daliniraSetSearchEngine('DuckDuckGo');
     if(input.value!=='keep this text' || input.matches(':placeholder-shown'))return false;
     input.value='';
     return input.matches(':placeholder-shown') && input.placeholder==="DuckDuckGo'da arayın veya URL'yi yazın";
@@ -435,10 +447,16 @@ static void testPlaceholdersAndCachedFavicon() {
     current.click();
     if(document.querySelector('#engine-menu').hidden||!pageRoot.classList.contains('search-focused'))return fail('picker-state');
     if(document.querySelector('#search').getBoundingClientRect().width!==searchWidth)return fail('picker-layout');
-    document.querySelector('.engine-option[data-engine="Bing"]').click();
+    if(document.querySelector('.engine-option[data-engine="Bing"]')||document.querySelector('.engine-option[data-engine="Brave Search"]'))return fail('removed-engines-present');
+    if(!document.querySelector('.engine-option[data-engine="Startpage"]')||!document.querySelector('.engine-option[data-engine="Mojeek"]'))return fail('new-engines-missing');
+    document.querySelector('.engine-option[data-engine="Startpage"]').click();
+    if(document.querySelector('#engine-current-icon').getAttribute('src')!=='startpage.ico'||input.placeholder!=="Startpage'de arayın veya URL'yi yazın")return fail('startpage-select');
+    document.querySelector('.engine-option[data-engine="Mojeek"]').click();
+    if(document.querySelector('#engine-current-icon').getAttribute('src')!=='mojeek.ico'||input.placeholder!=="Mojeek'te arayın veya URL'yi yazın")return fail('mojeek-select');
+    document.querySelector('.engine-option[data-engine="Google"]').click();
     return (pageRoot.classList.contains('search-focused')
-      && document.querySelector('#engine-current-icon').getAttribute('src')==='bing.ico'
-      && input.placeholder==="Bing'de arayın veya URL'yi yazın")||fail('picker-update');
+      && document.querySelector('#engine-current-icon').getAttribute('src')==='google.ico'
+      && input.placeholder==="Google'da arayın veya URL'yi yazın")||fail('picker-update');
   })())JS"), [&](const QVariant &value) { focusPassed = value.toBool(); focusLoop.quit(); });
   QTimer::singleShot(5000, &focusLoop, &QEventLoop::quit);
   focusLoop.exec();
@@ -575,7 +593,7 @@ static void testPhase2_2C_SitePolicyPersistenceAndExtendedFields() {
   QTemporaryDir dir;
   const QString iniPath = dir.path() + QStringLiteral("/test-adblock.ini");
   {
-    ArDaliBlockerSettings settings(iniPath);
+    DaliNiraBlockerSettings settings(iniPath);
     SitePolicy p;
     p.adBlocking = true;
     p.trackerProtection = false;
@@ -589,7 +607,7 @@ static void testPhase2_2C_SitePolicyPersistenceAndExtendedFields() {
     settings.setSitePolicy(QStringLiteral("youtube.com"), p);
   }
   {
-    ArDaliBlockerSettings reloaded(iniPath);
+    DaliNiraBlockerSettings reloaded(iniPath);
     const auto loaded = reloaded.sitePolicy(QStringLiteral("youtube.com"));
     assert(loaded.adBlocking == true);
     assert(loaded.trackerProtection == false);
@@ -605,7 +623,7 @@ static void testPhase2_2C_SitePolicyPersistenceAndExtendedFields() {
 
 static void testPhase2_2D_YouTubeCentralCosmeticLifecycle() {
   QTemporaryDir dir;
-  ArDaliBlockerService service(dir.path());
+  DaliNiraBlockerService service(dir.path());
   
   const QString css = service.cosmeticCssForHost(QStringLiteral("www.youtube.com"));
   assert(!css.isEmpty());
@@ -619,12 +637,12 @@ static void testPhase2_2D_YouTubeCentralCosmeticLifecycle() {
   const auto ytScripts = service.createScriptingScriptsForHost(QStringLiteral("www.youtube.com"));
   bool hasRuntime = false;
   for (const auto &s : ytScripts) {
-    if (s.name() == QStringLiteral("ardali-adblock-cosmetic")) {
+    if (s.name() == QStringLiteral("dalinira-adblock-cosmetic")) {
       hasRuntime = true;
       assert(s.worldId() == QWebEngineScript::ApplicationWorld);
       assert(s.injectionPoint() == QWebEngineScript::DocumentCreation);
       const QString code = s.sourceCode();
-      assert(code.contains(QStringLiteral("__ardaliCosmeticRuntime")));
+      assert(code.contains(QStringLiteral("__daliniraCosmeticRuntime")));
       assert(code.contains(QStringLiteral("yt-navigate-finish")));
       assert(code.contains(QStringLiteral("yt-page-data-updated")));
       assert(code.contains(QStringLiteral("MutationObserver")));
@@ -635,13 +653,13 @@ static void testPhase2_2D_YouTubeCentralCosmeticLifecycle() {
 
   const auto exampleScripts = service.createScriptingScriptsForHost(QStringLiteral("example.com"));
   for (const auto &s : exampleScripts) {
-    assert(s.name() != QStringLiteral("ardali-adblock-youtube-guardian"));
+    assert(s.name() != QStringLiteral("dalinira-adblock-youtube-guardian"));
   }
 }
 
 static void testPhase2_2C_EvaluateRequestPolicyEnforcement() {
   QTemporaryDir dir;
-  ArDaliBlockerService service(dir.path());
+  DaliNiraBlockerService service(dir.path());
 
   {
     SitePolicy p;
@@ -650,16 +668,16 @@ static void testPhase2_2C_EvaluateRequestPolicyEnforcement() {
     service.settings()->setSitePolicy(QStringLiteral("script-test.com"), p);
     
     auto dec = service.evaluateRequest(QUrl(QStringLiteral("https://script-test.com/app.js")),
-                                       static_cast<int>(ArDaliBlockerResourceType::Script),
+                                       static_cast<int>(DaliNiraBlockerResourceType::Script),
                                        QUrl(QStringLiteral("https://script-test.com/")), 10);
-    assert(dec.action == ArDaliBlockerAction::Block);
+    assert(dec.action == DaliNiraBlockerAction::Block);
 
     p.whitelisted = true;
     service.settings()->setSitePolicy(QStringLiteral("script-test.com"), p);
     auto decAllowed = service.evaluateRequest(QUrl(QStringLiteral("https://script-test.com/app.js")),
-                                             static_cast<int>(ArDaliBlockerResourceType::Script),
+                                             static_cast<int>(DaliNiraBlockerResourceType::Script),
                                              QUrl(QStringLiteral("https://script-test.com/")), 10);
-    assert(decAllowed.action == ArDaliBlockerAction::Allow);
+    assert(decAllowed.action == DaliNiraBlockerAction::Allow);
   }
 
   {
@@ -669,22 +687,22 @@ static void testPhase2_2C_EvaluateRequestPolicyEnforcement() {
     service.settings()->setSitePolicy(QStringLiteral("upgrade-test.com"), up);
 
     auto decUp = service.evaluateRequest(QUrl(QStringLiteral("http://upgrade-test.com/page.html")),
-                                         static_cast<int>(ArDaliBlockerResourceType::MainFrame),
+                                         static_cast<int>(DaliNiraBlockerResourceType::MainFrame),
                                          QUrl(QStringLiteral("http://upgrade-test.com/")), 20);
-    assert(decUp.action == ArDaliBlockerAction::Redirect);
+    assert(decUp.action == DaliNiraBlockerAction::Redirect);
     assert(decUp.redirectUrl == QStringLiteral("https://upgrade-test.com/page.html"));
 
     auto decLocal = service.evaluateRequest(QUrl(QStringLiteral("http://127.0.0.1:8080/test")),
-                                           static_cast<int>(ArDaliBlockerResourceType::MainFrame),
+                                           static_cast<int>(DaliNiraBlockerResourceType::MainFrame),
                                            QUrl(QStringLiteral("http://127.0.0.1:8080/")), 30);
-    assert(decLocal.action != ArDaliBlockerAction::Redirect);
+    assert(decLocal.action != DaliNiraBlockerAction::Redirect);
   }
 }
 
 int main(int argc, char *argv[]) {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox --disable-gpu");
-  registerArdaliUrlSchemes();
+  registerDaliNiraUrlSchemes();
   QApplication app(argc, argv);
 
   std::cerr << "Running testHistoryTitleAndTypedEvidence" << std::endl;

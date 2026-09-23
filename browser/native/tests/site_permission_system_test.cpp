@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
   assert(tempDir.isValid());
 
   std::cout << "==================================================" << std::endl;
-  std::cout << "[TEST SUITE] ArDali Site Controls & Permission System (30 Tests)" << std::endl;
+  std::cout << "[TEST SUITE] DaliNira Site Controls & Permission System (30 Tests)" << std::endl;
   std::cout << "==================================================" << std::endl;
 
   // -------------------------------------------------------------
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
     services.profileService = profileService.get();
     BrowserWindow window(services);
 
-    window.addNewTab(QUrl(QStringLiteral("https://www.google.com/search?q=ardali")));
+    window.addNewTab(QUrl(QStringLiteral("https://www.google.com/search?q=dalinira")));
     window.toggleSiteControlsBubble();
     auto *bubble = window.siteControlsBubble();
     assert(bubble != nullptr);
@@ -336,7 +336,7 @@ int main(int argc, char *argv[]) {
     services.profileService = profileService.get();
     BrowserWindow window(services);
 
-    int tabIdx = window.addNewTab(QUrl(QStringLiteral("https://meet.jit.si/ardali")));
+    int tabIdx = window.addNewTab(QUrl(QStringLiteral("https://meet.jit.si/dalinira")));
     window.setTabActiveMediaForTesting(tabIdx, true, true);
     assert(window.tabInfo(tabIdx).activeCamera);
     assert(window.tabInfo(tabIdx).activeMicrophone);
@@ -392,7 +392,7 @@ int main(int argc, char *argv[]) {
     services.profileService = profileService.get();
     BrowserWindow window(services);
 
-    int tabIdx = window.addNewTab(QUrl(QStringLiteral("https://podcast.ardali.com")));
+    int tabIdx = window.addNewTab(QUrl(QStringLiteral("https://podcast.dalinira.com")));
     window.setTabActiveMediaForTesting(tabIdx, false, true);
     assert(window.omniboxLeadingAction()->toolTip().contains(QStringLiteral("Mikrofon kullanımda")));
   }

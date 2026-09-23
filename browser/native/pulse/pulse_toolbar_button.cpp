@@ -397,7 +397,7 @@ void PulseQuickPopup::setupUi() {
   pulseIcon->setPixmap(QIcon(QStringLiteral(":/side-widget-icons/pulse.svg")).pixmap(18, 18));
   headerRow->addWidget(pulseIcon);
 
-  titleLabel_ = new QLabel(QStringLiteral("ArDali Pulse"), this);
+  titleLabel_ = new QLabel(QStringLiteral("DaliNira Pulse"), this);
   titleLabel_->setObjectName(QStringLiteral("pulse-title"));
   headerRow->addWidget(titleLabel_);
 
@@ -463,11 +463,11 @@ void PulseQuickPopup::setupUi() {
   resultsScroll_->setWidget(resultsContainer_);
   rootLayout->addWidget(resultsScroll_);
 
-  // Footer Row: "ArDali Pulse'u aç" Button
-  openFullBtn_ = new QPushButton(QStringLiteral("ArDali Pulse'u aç"), this);
+  // Footer Row: "DaliNira Pulse'u aç" Button
+  openFullBtn_ = new QPushButton(QStringLiteral("DaliNira Pulse'u aç"), this);
   openFullBtn_->setObjectName(QStringLiteral("pulse-open-full-btn"));
   openFullBtn_->setCursor(Qt::PointingHandCursor);
-  openFullBtn_->setToolTip(QStringLiteral("Tam ArDali Pulse sayfasını aç"));
+  openFullBtn_->setToolTip(QStringLiteral("Tam DaliNira Pulse sayfasını aç"));
   connect(openFullBtn_, &QPushButton::clicked, this, [this]() {
     handingOffToFullPage_ = true;
     emit openFullPageRequested();
@@ -626,8 +626,8 @@ PulseToolbarButton::PulseToolbarButton(SongRecognitionService *service,
   setIconSize(QSize(20, 20));
   setFixedSize(30, 30);
   setCursor(Qt::PointingHandCursor);
-  setToolTip(QStringLiteral("ArDali Pulse"));
-  setAccessibleName(QStringLiteral("ArDali Pulse"));
+  setToolTip(QStringLiteral("DaliNira Pulse"));
+  setAccessibleName(QStringLiteral("DaliNira Pulse"));
 
   setStyleSheet(QStringLiteral(
       "QToolButton#pulse-toolbar-button { background: transparent; border: 0; border-radius: 15px; padding: 2px; }"
@@ -681,12 +681,12 @@ void PulseToolbarButton::onServiceStateChanged(SongRecognitionService::State sta
     if (!animTimer_->isActive()) {
       animTimer_->start();
     }
-    setToolTip(QStringLiteral("ArDali Pulse (Dinleniyor...)"));
+    setToolTip(QStringLiteral("DaliNira Pulse (Dinleniyor...)"));
   } else {
     if (animTimer_->isActive()) {
       animTimer_->stop();
     }
-    setToolTip(QStringLiteral("ArDali Pulse"));
+    setToolTip(QStringLiteral("DaliNira Pulse"));
   }
   update();
 }

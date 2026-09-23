@@ -2,7 +2,7 @@
 
 #include <QString>
 
-namespace ardali {
+namespace dalinira {
 
 struct WebEngineMemoryPolicyStatus {
   bool configured = false;
@@ -23,4 +23,4 @@ class WebEngineMemoryPolicy {
       const QString &qtLibraryExecutablesDir = QString());
 };
 
-}  // namespace ardali
+}  // namespace dalinira

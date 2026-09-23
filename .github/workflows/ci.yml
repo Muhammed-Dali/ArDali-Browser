@@ -70,7 +70,7 @@ jobs:
           submodules: false
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DARDALI_PHASE22D_TEST_TIMEOUT=${{ matrix.package_family == 'pacman' && '180' || '120' }}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDALINIRA_PHASE22D_TEST_TIMEOUT=${{ matrix.package_family == 'pacman' && '180' || '120' }}
 
       - name: Build
         run: cmake --build build --parallel 2
@@ -115,7 +115,7 @@ jobs:
           QTWEBENGINE_DISABLE_SANDBOX: "1"
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu --disable-web-resources
           DBUS_SYSTEM_BUS_ADDRESS: unix:path=/run/dbus/system_bus_socket
-          ARDALI_SLOW_WEBENGINE_CI: ${{ matrix.package_family == 'pacman' && '1' || '0' }}
+          DALINIRA_SLOW_WEBENGINE_CI: ${{ matrix.package_family == 'pacman' && '1' || '0' }}
         run: |
           # Verify D-Bus one more time
           ls -la /run/dbus/system_bus_socket || echo "Warning: D-Bus socket not found"

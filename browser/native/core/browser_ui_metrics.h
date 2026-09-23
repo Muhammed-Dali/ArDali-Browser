@@ -1,6 +1,6 @@
 #pragma once
 
-namespace ardali::ui {
+namespace dalinira::ui {
 
 // Browser chrome metrics in Qt logical pixels. Qt 6 maps these to physical
 // pixels using the screen's devicePixelRatio; callers must not multiply them.
@@ -16,4 +16,4 @@ struct BrowserChromeMetrics {
   static constexpr int tabSearchButtonSize = 32;
 };
 
-} // namespace ardali::ui
+} // namespace dalinira::ui

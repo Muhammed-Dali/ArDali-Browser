@@ -18,7 +18,7 @@ const {
 const { runProgramTasks } = require('./task-runtime');
 const { createProgramIR, hashIR } = require('./ir');
 const { loadOrCreateCachedIR, defaultCacheDir } = require('./ir-cache');
-const { tokenizeBrowserManifest, parseArDaliBrowserManifest, validateBrowserManifest } = require('./browser-manifest');
+const { tokenizeBrowserManifest, parseDaliNiraBrowserManifest, validateBrowserManifest } = require('./browser-manifest');
 
 module.exports = {
   parseDali,
@@ -41,6 +41,6 @@ module.exports = {
   loadOrCreateCachedIR,
   defaultCacheDir,
   tokenizeBrowserManifest,
-  parseArDaliBrowserManifest,
+  parseDaliNiraBrowserManifest,
   validateBrowserManifest
 };

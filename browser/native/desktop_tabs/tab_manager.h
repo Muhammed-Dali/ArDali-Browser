@@ -12,7 +12,7 @@
 class QWebEnginePage;
 class QWidget;
 
-namespace ardali {
+namespace dalinira {
 class TabPerformanceManager;
 }
 
@@ -79,7 +79,7 @@ class TabManager final : public QObject {
   int recordCount() const { return records_.size(); }
   bool validate(QString *reason = nullptr) const;
 
-  ardali::TabPerformanceManager *performanceManager() const;
+  dalinira::TabPerformanceManager *performanceManager() const;
 
  signals:
   void tabRegistered(TabManager::TabId id, TabManager::TabKind kind);
@@ -94,5 +94,5 @@ class TabManager final : public QObject {
   QHash<const QWebEngineView *, TabId> viewIndex_;
   QHash<const QWidget *, TabId> contentIndex_;
   quint64 activationSerial_ = 0;
-  std::unique_ptr<ardali::TabPerformanceManager> performanceManager_;
+  std::unique_ptr<dalinira::TabPerformanceManager> performanceManager_;
 };

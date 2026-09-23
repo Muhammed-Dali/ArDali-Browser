@@ -14,7 +14,7 @@ int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
   QObject mainOwner;
   QObject detachedOwner;
-  QWebEngineProfile profile("ardali-tab-manager-test", &app);
+  QWebEngineProfile profile("dalinira-tab-manager-test", &app);
   QWebEngineView first;
   QWebEngineView second;
   first.setPage(new QWebEnginePage(&profile, &first));

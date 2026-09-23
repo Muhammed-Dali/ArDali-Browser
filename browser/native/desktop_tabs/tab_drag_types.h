@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_DRAG_TYPES_H_
-#define ARDALI_DESKTOP_TABS_TAB_DRAG_TYPES_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_DRAG_TYPES_H_
+#define DALINIRA_DESKTOP_TABS_TAB_DRAG_TYPES_H_
 
 #include <QIcon>
 #include <QPoint>
@@ -8,7 +8,7 @@
 #include <QString>
 #include <cstdint>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 enum class DragState {
   Idle,
@@ -53,9 +53,9 @@ enum class EndDragReason {
 
 enum class TabStyle {
   ChromeCurved,
-  ArDaliSignature,
+  DaliNiraSignature,
   FloatingPill,
-  ArDaliConnected
+  DaliNiraConnected
 };
 
 struct TabGeometry {
@@ -103,6 +103,6 @@ struct LayoutMetrics {
   int newTabButtonGap = 4;
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_DRAG_TYPES_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_DRAG_TYPES_H_

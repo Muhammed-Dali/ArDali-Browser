@@ -6,7 +6,7 @@
 
 class QTimer;
 
-namespace ardali {
+namespace dalinira {
 
 enum class MemoryPressureLevel {
   Normal,    ///< Plenty of memory available (> 20% free/available)
@@ -47,7 +47,7 @@ class SystemMemoryPressureMonitor : public QObject {
   void setSimulatedPressureLevel(std::optional<MemoryPressureLevel> level);
 
  signals:
-  void pressureLevelChanged(ardali::MemoryPressureLevel level);
+  void pressureLevelChanged(dalinira::MemoryPressureLevel level);
 
  private:
   void evaluateSystemPressure();
@@ -59,4 +59,4 @@ class SystemMemoryPressureMonitor : public QObject {
   int64_t totalMemoryMb_ = -1;
 };
 
-} // namespace ardali
+} // namespace dalinira

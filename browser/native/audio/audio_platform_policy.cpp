@@ -1,6 +1,6 @@
 #include "audio_platform_policy.h"
 
-namespace ardali::audio {
+namespace dalinira::audio {
 
 const QStringList &supportedAudioPlatformDomains() {
   static const QStringList domains{
@@ -13,7 +13,7 @@ const QStringList &supportedAudioPlatformDomains() {
       QStringLiteral("instagram.com"),
       QStringLiteral("tiktok.com"),
   };
-  if (qEnvironmentVariableIntValue("ARDALI_ALLOW_LOCAL_AUDIO_TEST") == 1) {
+  if (qEnvironmentVariableIntValue("DALINIRA_ALLOW_LOCAL_AUDIO_TEST") == 1) {
     static const QStringList testDomains = [] {
       QStringList list = domains;
       list.append(QStringLiteral("127.0.0.1"));
@@ -32,7 +32,7 @@ bool isSupportedAudioPlatform(const QUrl &url) {
 
   const QString host = url.host().toLower();
   if (host.isEmpty()) return false;
-  if (qEnvironmentVariableIntValue("ARDALI_ALLOW_LOCAL_AUDIO_TEST") == 1
+  if (qEnvironmentVariableIntValue("DALINIRA_ALLOW_LOCAL_AUDIO_TEST") == 1
       && (host == QLatin1String("127.0.0.1") || host == QLatin1String("localhost"))) {
     return true;
   }
@@ -42,4 +42,4 @@ bool isSupportedAudioPlatform(const QUrl &url) {
   return false;
 }
 
-}  // namespace ardali::audio
+}  // namespace dalinira::audio

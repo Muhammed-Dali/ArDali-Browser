@@ -11,7 +11,7 @@
 #include "desktop_tabs/tab_strip_widget.h"
 #include "desktop_tabs/tab_window_registry.h"
 
-using namespace ardali::desktop_tabs;
+using namespace dalinira::desktop_tabs;
 
 namespace {
 
@@ -34,7 +34,7 @@ int findTabIndex(TabStripWidget *strip, uint64_t id) {
 
 int main(int argc, char **argv) {
   qputenv("QT_QPA_PLATFORM", "offscreen");
-  qputenv("ARDALI_DESKTOP_TAB_DIAGNOSTICS", "1");
+  qputenv("DALINIRA_DESKTOP_TAB_DIAGNOSTICS", "1");
   QApplication app(argc, argv);
 
   std::cout << "[TEST] Starting critical tab drag scenario test...\n";
@@ -51,8 +51,8 @@ int main(int argc, char **argv) {
     TabWindowRegistry::instance().clear();
     QWidget testWin;
     testWin.setGeometry(100, 100, 900, 600);
-    testWin.setProperty("ardaliTabProfile", 1);
-    testWin.setProperty("ardaliTabWindowType", QStringLiteral("regular"));
+    testWin.setProperty("daliniraTabProfile", 1);
+    testWin.setProperty("daliniraTabWindowType", QStringLiteral("regular"));
     auto *testStrip = new TabStripWidget(&testWin);
     testStrip->setGeometry(0, 0, 900, 34);
     testStrip->addTab(1, QStringLiteral("Tab 1"));
@@ -65,9 +65,9 @@ int main(int argc, char **argv) {
     controller.setDetachedWindowFactory([&](QWidget *, uint64_t) -> QWidget * {
       shellCreated = new QWidget;
       shellCreated->setGeometry(0, 0, 900, 600);
-      shellCreated->setProperty("ardaliTabProfile", 1);
-      shellCreated->setProperty("ardaliTabWindowType", QStringLiteral("regular"));
-      shellCreated->setProperty("ardaliDragCaptureShell", true);
+      shellCreated->setProperty("daliniraTabProfile", 1);
+      shellCreated->setProperty("daliniraTabWindowType", QStringLiteral("regular"));
+      shellCreated->setProperty("daliniraDragCaptureShell", true);
       auto *strip = new TabStripWidget(shellCreated);
       strip->setGeometry(0, 0, 900, 34);
       TabWindowRegistry::instance().registerWindow(shellCreated, strip);
@@ -173,8 +173,8 @@ int main(int argc, char **argv) {
     QWidget winA;
     winA.setObjectName("Window_A");
     winA.setGeometry(100, 100, 900, 600);
-    winA.setProperty("ardaliTabProfile", 42);
-    winA.setProperty("ardaliTabWindowType", QStringLiteral("regular"));
+    winA.setProperty("daliniraTabProfile", 42);
+    winA.setProperty("daliniraTabWindowType", QStringLiteral("regular"));
     auto *stripA = new TabStripWidget(&winA);
     stripA->setObjectName("Strip_A");
     stripA->setGeometry(0, 0, 900, 34);
@@ -186,8 +186,8 @@ int main(int argc, char **argv) {
     QWidget winB;
     winB.setObjectName("Window_B");
     winB.setGeometry(1100, 100, 900, 600);
-    winB.setProperty("ardaliTabProfile", 42);
-    winB.setProperty("ardaliTabWindowType", QStringLiteral("regular"));
+    winB.setProperty("daliniraTabProfile", 42);
+    winB.setProperty("daliniraTabWindowType", QStringLiteral("regular"));
     auto *stripB = new TabStripWidget(&winB);
     stripB->setObjectName("Strip_B");
     stripB->setGeometry(0, 0, 900, 34);
@@ -207,9 +207,9 @@ int main(int argc, char **argv) {
       auto *shell = new QWidget;
       shell->setObjectName(QString("Shell_%1").arg(shellsCreated.size() + 1));
       shell->setGeometry(0, 0, 900, 600);
-      shell->setProperty("ardaliTabProfile", 42);
-      shell->setProperty("ardaliTabWindowType", QStringLiteral("regular"));
-      shell->setProperty("ardaliDragCaptureShell", true);
+      shell->setProperty("daliniraTabProfile", 42);
+      shell->setProperty("daliniraTabWindowType", QStringLiteral("regular"));
+      shell->setProperty("daliniraDragCaptureShell", true);
       auto *strip = new TabStripWidget(shell);
       strip->setObjectName(QString("ShellStrip_%1").arg(shellsCreated.size() + 1));
       strip->setGeometry(0, 0, 900, 34);
@@ -342,9 +342,9 @@ int main(int argc, char **argv) {
     QWidget maxWin;
     maxWin.setGeometry(0, 0, 1920, 1080);
     maxWin.setWindowState(Qt::WindowMaximized);
-    maxWin.setProperty("ardaliRestoredSize", QSize(1000, 650));
-    maxWin.setProperty("ardaliTabProfile", 1);
-    maxWin.setProperty("ardaliTabWindowType", QStringLiteral("regular"));
+    maxWin.setProperty("daliniraRestoredSize", QSize(1000, 650));
+    maxWin.setProperty("daliniraTabProfile", 1);
+    maxWin.setProperty("daliniraTabWindowType", QStringLiteral("regular"));
 
     auto *maxStrip = new TabStripWidget(&maxWin);
     maxStrip->setGeometry(0, 0, 1920, 34);
@@ -415,9 +415,9 @@ int main(int argc, char **argv) {
     QWidget singleWin;
     singleWin.setGeometry(0, 0, 1920, 1080);
     singleWin.setWindowState(Qt::WindowMaximized);
-    singleWin.setProperty("ardaliRestoredSize", QSize(950, 600));
-    singleWin.setProperty("ardaliTabProfile", 1);
-    singleWin.setProperty("ardaliTabWindowType", QStringLiteral("regular"));
+    singleWin.setProperty("daliniraRestoredSize", QSize(950, 600));
+    singleWin.setProperty("daliniraTabProfile", 1);
+    singleWin.setProperty("daliniraTabWindowType", QStringLiteral("regular"));
 
     auto *singleStrip = new TabStripWidget(&singleWin);
     singleStrip->setGeometry(0, 0, 1920, 34);

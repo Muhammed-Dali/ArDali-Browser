@@ -64,7 +64,7 @@ SongRecognitionService::~SongRecognitionService() {
 
 void SongRecognitionService::loadHistory() {
   if (!historyPersistenceEnabled_) return;
-  QSettings s(QStringLiteral("ArDali"), QStringLiteral("SongFinderHistory"));
+  QSettings s(QStringLiteral("DaliNira"), QStringLiteral("SongFinderHistory"));
   hardenSongHistoryStorage(&s);
   const int count = s.beginReadArray(QStringLiteral("history"));
   bool sanitizedStoredUrl = false;
@@ -94,7 +94,7 @@ void SongRecognitionService::loadHistory() {
 
 void SongRecognitionService::saveHistory() {
   if (!historyPersistenceEnabled_) return;
-  QSettings s(QStringLiteral("ArDali"), QStringLiteral("SongFinderHistory"));
+  QSettings s(QStringLiteral("DaliNira"), QStringLiteral("SongFinderHistory"));
   const int storedCount = std::min(static_cast<int>(history_.size()), kMaximumHistoryEntries);
   s.beginWriteArray(QStringLiteral("history"), storedCount);
   for (int i = 0; i < storedCount; ++i) {
@@ -251,7 +251,7 @@ bool SongRecognitionService::startListening(const QString &requestedDeviceId) {
   recognitionTimer_->start();
 
   setState(State::Listening, QStringLiteral("Dinliyorum"));
-  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+  if (qEnvironmentVariableIntValue("DALINIRA_FEATURE_DIAGNOSTICS") == 1) {
     qInfo().noquote() << "[PULSE] capture started";
   }
   return true;
@@ -279,7 +279,7 @@ void SongRecognitionService::setState(State state, const QString &message) {
 void SongRecognitionService::onCaptureVolumeChanged(double levelPercent, double bufferFillPercent, AudioCaptureService::ActiveSourceType sourceType, const QString &sourceName) {
   Q_UNUSED(sourceType);
   static int s_pulseFrameLogCount = 0;
-  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+  if (qEnvironmentVariableIntValue("DALINIRA_FEATURE_DIAGNOSTICS") == 1) {
     if (++s_pulseFrameLogCount % 20 == 1) {
       qInfo().noquote() << "[PULSE] audio frames received";
     }
@@ -340,7 +340,7 @@ void SongRecognitionService::processBufferForRecognition() {
         return;
       }
 
-      if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+      if (qEnvironmentVariableIntValue("DALINIRA_FEATURE_DIAGNOSTICS") == 1) {
         qInfo().noquote() << "[PULSE] fingerprint generated";
         qInfo().noquote() << "[PULSE] recognition request started";
       }
@@ -382,7 +382,7 @@ void SongRecognitionService::sendShazamRequest(const QString &signatureUri, int 
   QNetworkRequest request((QUrl(endpoint)));
   request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
   request.setRawHeader("Content-Language", "en_US");
-  request.setRawHeader("User-Agent", "ArDali-Pulse/1.0");
+  request.setRawHeader("User-Agent", "DaliNira-Pulse/1.0");
 
   QNetworkReply *reply = networkManager_->post(request, payload);
   activeReply_ = reply;
@@ -479,7 +479,7 @@ void SongRecognitionService::handleShazamResponse(const QByteArray &data, int st
       hasActiveResult_ = true;
       activeResult_ = result;
       emit activeResultChanged(activeResult_, true);
-      if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+      if (qEnvironmentVariableIntValue("DALINIRA_FEATURE_DIAGNOSTICS") == 1) {
         qInfo().noquote() << "[PULSE] result received:" << result.title << "-" << result.artist;
       }
       // FIRST emit songFound so UI has card in list before state becomes Found

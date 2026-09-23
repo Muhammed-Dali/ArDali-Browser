@@ -1,0 +1,7 @@
+# DaliNira Adult Content Protection Blocklist
+# Format: canonical domain per line.
+# Lines starting with # and empty lines are ignored.
+# This list is loaded by AdultContentProtectionService with strict domain boundary matching.
+# Test domain definitions:
+adult-test.example
+another-adult-test.example

@@ -140,7 +140,7 @@ TranslateBubblePopup::TranslateBubblePopup(QWidget *parent)
   // Bottom Status / Brand Row
   auto *bottomLayout = new QHBoxLayout;
   bottomLayout->setContentsMargins(0, 0, 0, 0);
-  brandLabel_ = new QLabel(QStringLiteral("ArDali Çeviri"), this);
+  brandLabel_ = new QLabel(QStringLiteral("DaliNira Çeviri"), this);
   brandLabel_->setObjectName(QStringLiteral("brand-label"));
   statusLabel_ = new QLabel(this);
   statusLabel_->setObjectName(QStringLiteral("status-label"));
@@ -303,10 +303,10 @@ void TranslateBubblePopup::updateUi() {
     } else if (pid == QLatin1String("deepl")) {
       brandLabel_->setText(QStringLiteral("DeepL"));
     } else {
-      brandLabel_->setText(QStringLiteral("ArDali Çeviri"));
+      brandLabel_->setText(QStringLiteral("DaliNira Çeviri"));
     }
   } else {
-    brandLabel_->setText(QStringLiteral("ArDali Çeviri"));
+    brandLabel_->setText(QStringLiteral("DaliNira Çeviri"));
   }
 
   const QString kActiveTabStyle = QStringLiteral(

@@ -24,7 +24,7 @@ struct BrowserFrequentSite {
 };
 #endif
 
-namespace ardali::core {
+namespace dalinira::core {
 
 class IBrowserProfileDataProvider {
  public:
@@ -38,4 +38,4 @@ class IBrowserProfileDataProvider {
   virtual int recentDownloadCount() const { return 0; }
 };
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

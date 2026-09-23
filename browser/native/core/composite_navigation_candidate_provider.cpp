@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace ardali::core {
+namespace dalinira::core {
 
 CompositeNavigationCandidateProvider::CompositeNavigationCandidateProvider(QObject *parent)
     : QObject(parent) {}
@@ -115,4 +115,4 @@ std::optional<QUrl> CompositeNavigationCandidateProvider::findNavigationCandidat
   return top.url;
 }
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

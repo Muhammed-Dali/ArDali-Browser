@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_PLATFORM_TAB_DRAG_PLATFORM_H_
-#define ARDALI_DESKTOP_TABS_PLATFORM_TAB_DRAG_PLATFORM_H_
+#ifndef DALINIRA_DESKTOP_TABS_PLATFORM_TAB_DRAG_PLATFORM_H_
+#define DALINIRA_DESKTOP_TABS_PLATFORM_TAB_DRAG_PLATFORM_H_
 
 #include <QCursor>
 #include <QGuiApplication>
@@ -8,7 +8,7 @@
 #include <QWidget>
 #include <memory>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 class TabDragPlatformBackend {
  public:
@@ -25,6 +25,6 @@ class TabDragPlatformBackend {
   static std::unique_ptr<TabDragPlatformBackend> create();
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_PLATFORM_TAB_DRAG_PLATFORM_H_
+#endif  // DALINIRA_DESKTOP_TABS_PLATFORM_TAB_DRAG_PLATFORM_H_

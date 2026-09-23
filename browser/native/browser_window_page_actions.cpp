@@ -20,16 +20,16 @@
 #include <QWebEngineFindTextResult>
 #include <QWebEngineFullScreenRequest>
 
-using ardali::i18n::I18n;
+using dalinira::i18n::I18n;
 
 void BrowserWindow::showFindBar() {
   if (!findBar_) {
-    findBar_ = new ardali::desktop_tabs::FindBarWidget(this);
-    connect(findBar_, &ardali::desktop_tabs::FindBarWidget::findRequested,
+    findBar_ = new dalinira::desktop_tabs::FindBarWidget(this);
+    connect(findBar_, &dalinira::desktop_tabs::FindBarWidget::findRequested,
             this, &BrowserWindow::handleFindRequest);
-    connect(findBar_, &ardali::desktop_tabs::FindBarWidget::clearFindRequested,
+    connect(findBar_, &dalinira::desktop_tabs::FindBarWidget::clearFindRequested,
             this, &BrowserWindow::handleClearFind);
-    connect(findBar_, &ardali::desktop_tabs::FindBarWidget::closeRequested,
+    connect(findBar_, &dalinira::desktop_tabs::FindBarWidget::closeRequested,
             this, &BrowserWindow::hideFindBar);
   }
   updateFindBarPosition();

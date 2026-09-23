@@ -23,8 +23,8 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
-#include "ardali_blocker_service.h"
-#include "ardali_blocker_shield_button.h"
+#include "dalinira_blocker_service.h"
+#include "dalinira_blocker_shield_button.h"
 #include "search_suggestion_service.h"
 #include "glow_toggle_switch.h"
 
@@ -59,7 +59,11 @@ static void suggestions() {
   assert(network.last.attribute(QNetworkRequest::CookieSaveControlAttribute).toInt()==QNetworkRequest::Manual);
   assert(network.last.attribute(QNetworkRequest::RedirectPolicyAttribute).toInt()==QNetworkRequest::ManualRedirectPolicy);
   assert(!network.last.hasRawHeader("Cookie")&&!network.last.hasRawHeader("Authorization"));
-  for(const QString &engine : {"Google","DuckDuckGo","Brave Search","Bing"}) assert(SearchSuggestionService::endpoint(engine,"hav").scheme()=="https");
+  for(const QString &engine : {"Google","DuckDuckGo","Startpage"}) assert(SearchSuggestionService::endpoint(engine,"hav").scheme()=="https");
+  assert(SearchSuggestionService::endpoint("Startpage","hav").toString()=="https://www.startpage.com/osuggestions?q=hav");
+  assert(!SearchSuggestionService::endpoint("Mojeek","hav").isValid());
+  assert(SearchSuggestionService::endpoint("Brave Search","hav").host()=="suggestqueries.google.com");
+  assert(SearchSuggestionService::endpoint("Bing","hav").host()=="suggestqueries.google.com");
   assert(!SearchSuggestionService::endpoint("https://127.0.0.1/","hav").isValid());
   assert(SearchSuggestionService::parseResponse("not json").isEmpty());
   assert(SearchSuggestionService::parseResponse(QByteArray(65537,'a')).isEmpty());
@@ -67,25 +71,25 @@ static void suggestions() {
   for(const QString &query : {"","javascript:foo","data:text/html,hi","file:///tmp/a","qrc:/secret","user:password@example.com"}) assert(!SearchSuggestionService::safeQuery(query));
   const int before=network.requests;
   service.request(&owner,"private","Google",true,done);wait(230);assert(network.requests==before);
-  service.request(&owner,"cancel","Bing",false,done);service.setEnabled(false);wait(230);assert(network.requests==before);
+  service.request(&owner,"cancel","DuckDuckGo",false,done);service.setEnabled(false);wait(230);assert(network.requests==before);
   service.setEnabled(true);network.delay=500;network.body=R"(["old",["old result"]])";
   service.request(&owner,"old","Google",false,done);wait(230);
   network.delay=20;network.body=R"(["latest",["latest result"]])";
-  service.request(&owner,"latest","Bing",false,done);wait(300);assert(results==QStringList{"latest result"});
+  service.request(&owner,"latest","DuckDuckGo",false,done);wait(300);assert(results==QStringList{"latest result"});
   wait(350);assert(results==QStringList{"latest result"});
   network.body=QByteArray(65537,'x');service.request(&owner,"large","Google",false,done);wait(270);assert(results.isEmpty());
   network.delay=10000;service.request(&owner,"timeout","Google",false,done);wait(4900);assert(results.isEmpty());
   std::cout<<"Suggestion consent, providers, debounce, cancellation, limits, parsing and timeout passed\n";
 }
 static void shields() {
-  QTemporaryDir directory;ArDaliBlockerService service(directory.path());
+  QTemporaryDir directory;DaliNiraBlockerService service(directory.path());
   service.settings()->setAutoReloadOnModeChange(false);
-  ArDaliBlockerQuickPopup popup(&service);popup.updateForHost("youtube.com",12);popup.show();wait(30);
-  const QString snapshotPath = qEnvironmentVariable("ARDALI_PHASE22D_SNAPSHOT");
+  DaliNiraBlockerQuickPopup popup(&service);popup.updateForHost("youtube.com",12);popup.show();wait(30);
+  const QString snapshotPath = qEnvironmentVariable("DALINIRA_PHASE22D_SNAPSHOT");
   if (!snapshotPath.isEmpty()) {
     assert(popup.grab().save(snapshotPath));
   }
-  int writes=0;QObject::connect(service.settings(),&ArDaliBlockerSettings::sitePoliciesChanged,[&]{++writes;});
+  int writes=0;QObject::connect(service.settings(),&DaliNiraBlockerSettings::sitePoliciesChanged,[&]{++writes;});
   for(auto *toggle:popup.findChildren<QCheckBox *>()) {
     // Keep the master on while exercising each subordinate row.
     for(const QPoint point : {QPoint(3,toggle->height()/2),QPoint(toggle->width()-5,toggle->height()/2),QPoint(toggle->width()/2,toggle->height()/2)}) {
@@ -101,23 +105,23 @@ static void shields() {
   popup.findChild<QToolButton *>("adblock-site-reset")->click();
   assert(!service.settings()->sitePolicies().contains("youtube.com"));assert(service.settings()->sitePolicy("facebook.com").whitelisted);
   assert(service.settings()->protectionEnabled());
-  assert(ArDaliBlockerSettings::normalizeSiteHost("HTTPS://WWW.YouTube.COM.:443/")=="youtube.com");
-  assert(ArDaliBlockerSettings::normalizeSiteHost("facebook.com@youtube.com").isEmpty());
-  assert(ArDaliBlockerSettings::normalizeSiteHost("youtube.com/path").isEmpty());
-  assert(ArDaliBlockerSettings::normalizeSiteHost("[::1]:443")=="::1");
-  service.settings()->setMode(ArDaliBlockerMode::Aggressive);service.settings()->resetToDefaults();
-  assert(service.settings()->mode()==ArDaliBlockerDefaults::Mode&&service.settings()->sitePolicies().isEmpty());
-  assert(!ArDaliBlockerEngine::validateCustomFilterLine(QString(9000,'a')).isEmpty());
+  assert(DaliNiraBlockerSettings::normalizeSiteHost("HTTPS://WWW.YouTube.COM.:443/")=="youtube.com");
+  assert(DaliNiraBlockerSettings::normalizeSiteHost("facebook.com@youtube.com").isEmpty());
+  assert(DaliNiraBlockerSettings::normalizeSiteHost("youtube.com/path").isEmpty());
+  assert(DaliNiraBlockerSettings::normalizeSiteHost("[::1]:443")=="::1");
+  service.settings()->setMode(DaliNiraBlockerMode::Aggressive);service.settings()->resetToDefaults();
+  assert(service.settings()->mode()==DaliNiraBlockerDefaults::Mode&&service.settings()->sitePolicies().isEmpty());
+  assert(!DaliNiraBlockerEngine::validateCustomFilterLine(QString(9000,'a')).isEmpty());
   service.evaluateRequest(QUrl("https://user:password@www.google.com/search?q=private-query&token=secret#fragment"),0,QUrl("https://www.google.com/"),1);
   assert(service.recentLogs(1).first().requestUrl==QStringLiteral("https://www.google.com/search"));
-  assert(!ArDaliBlockerSettings::findSitePolicy("127.0.0.1",{}).has_value());
-  assert(ArDaliBlockerSettings::normalizeSiteHost("::1")==QStringLiteral("::1"));
-  assert(ArDaliBlockerSettings::normalizeSiteHost("co.uk").isEmpty());
-  assert(ArDaliBlockerSettings::normalizeSiteHost(QString::fromUtf8("BÜCHER.de"))==QStringLiteral("xn--bcher-kva.de"));
-  ArDaliBlockerEngine securityEngine;
+  assert(!DaliNiraBlockerSettings::findSitePolicy("127.0.0.1",{}).has_value());
+  assert(DaliNiraBlockerSettings::normalizeSiteHost("::1")==QStringLiteral("::1"));
+  assert(DaliNiraBlockerSettings::normalizeSiteHost("co.uk").isEmpty());
+  assert(DaliNiraBlockerSettings::normalizeSiteHost(QString::fromUtf8("BÜCHER.de"))==QStringLiteral("xn--bcher-kva.de"));
+  DaliNiraBlockerEngine securityEngine;
   securityEngine.addCustomFilterLines({QStringLiteral("||notgoogle.com^"),QStringLiteral("||asset.github.io^$third-party")});
-  assert(securityEngine.evaluate(QUrl("https://notgoogle.com/ad.js"),ArDaliBlockerResourceType::Script,"notgoogle.com",ArDaliBlockerMode::Ideal,SitePolicy{}).action==ArDaliBlockerAction::Block);
-  assert(securityEngine.evaluate(QUrl("https://asset.github.io/ad.js"),ArDaliBlockerResourceType::Script,"other.github.io",ArDaliBlockerMode::Ideal,SitePolicy{}).action==ArDaliBlockerAction::Block);
+  assert(securityEngine.evaluate(QUrl("https://notgoogle.com/ad.js"),DaliNiraBlockerResourceType::Script,"notgoogle.com",DaliNiraBlockerMode::Ideal,SitePolicy{}).action==DaliNiraBlockerAction::Block);
+  assert(securityEngine.evaluate(QUrl("https://asset.github.io/ad.js"),DaliNiraBlockerResourceType::Script,"other.github.io",DaliNiraBlockerMode::Ideal,SitePolicy{}).action==DaliNiraBlockerAction::Block);
   std::cout<<"Shields mouse/keyboard, repeated clicks, reopen, host switching, resets and normalization passed\n";
 }
 class FixturePage final : public QWebEnginePage {
@@ -125,7 +129,7 @@ class FixturePage final : public QWebEnginePage {
  protected: void javaScriptConsoleMessage(JavaScriptConsoleMessageLevel,const QString &message,int,const QString &) override { std::cerr << "fixture JS: " << message.toStdString() << std::endl; }
 };
 static void cosmetics(const QString &host) {
-  QTemporaryDir directory;ArDaliBlockerService service(directory.path());
+  QTemporaryDir directory;DaliNiraBlockerService service(directory.path());
   QWebEngineProfile profile;FixturePage page(&profile);QWebEngineView view;view.setPage(&page);view.resize(800,600);view.show();
   const bool youtube=host=="youtube.com";
   const QString html=youtube ? QStringLiteral("<html><body><ytd-rich-item-renderer id='normal'>normal video</ytd-rich-item-renderer><ytd-reel-item-renderer id='short'>Short</ytd-reel-item-renderer><ytd-video-renderer id='search'>Search result</ytd-video-renderer><ytd-rich-item-renderer id='ad'><ytd-ad-slot-renderer></ytd-ad-slot-renderer></ytd-rich-item-renderer><ytd-rich-item-renderer id='recycled'><span>Normal</span></ytd-rich-item-renderer></body></html>") : QStringLiteral("<html><body><div role='feed'><div role='article' id='normal'>friend post Sponsored discussion</div><div role='article' id='ad' data-ad-preview='message'>Sponsorlu</div><div role='article' id='recycled'>normal</div></div><div id='messenger'>Messenger</div></body></html>");
@@ -140,13 +144,13 @@ static void cosmetics(const QString &host) {
   const QString marker=youtube?"<ytd-ad-slot-renderer></ytd-ad-slot-renderer>":"<div data-ad-preview='message'>Sponsored</div>";
   js(page,QString("document.getElementById('recycled').innerHTML=%1[0]").arg(QString::fromUtf8(QJsonDocument(QJsonArray{marker}).toJson(QJsonDocument::Compact))));wait(250);
   assert(waitForJs(page,recycledHidden));
-  js(page,"document.getElementById('recycled').textContent='now a normal post';document.getElementById('ad').style.display='block';document.getElementById('ardali-adblock-cosmetic').remove();window.dispatchEvent(new Event('yt-navigate-finish'));window.dispatchEvent(new Event('popstate'));");wait(300);
+  js(page,"document.getElementById('recycled').textContent='now a normal post';document.getElementById('ad').style.display='block';document.getElementById('dalinira-adblock-cosmetic').remove();window.dispatchEvent(new Event('yt-navigate-finish'));window.dispatchEvent(new Event('popstate'));");wait(300);
   assert(waitForJs(page,"getComputedStyle(document.getElementById('recycled')).display!=='none'"));
   assert(waitForJs(page,adHidden));
   js(page,service.createCosmeticScriptForHost(host).sourceCode(),QWebEngineScript::ApplicationWorld);wait(250);
-  assert(js(page,"document.querySelectorAll('#ardali-adblock-cosmetic').length").toInt()==1);
-  assert(!js(page,"!!window.__ardaliCosmeticRuntime").toBool());
-  assert(js(page,"!!window.__ardaliCosmeticRuntime.observer",QWebEngineScript::ApplicationWorld).toBool());
+  assert(js(page,"document.querySelectorAll('#dalinira-adblock-cosmetic').length").toInt()==1);
+  assert(!js(page,"!!window.__daliniraCosmeticRuntime").toBool());
+  assert(js(page,"!!window.__daliniraCosmeticRuntime.observer",QWebEngineScript::ApplicationWorld).toBool());
   service.settings()->setProtectionEnabled(false);assert(service.createCosmeticScriptForHost(host).sourceCode().isEmpty());
   page.scripts().clear();page.setHtml(html);wait(350);assert(waitForJs(page,"!"+adHidden));
   std::cout<<host.toStdString()<<" dynamic/recycled DOM, style recovery, route lifecycle, isolation and OFF passed\n";
@@ -154,7 +158,7 @@ static void cosmetics(const QString &host) {
 
 static void counter_invariants() {
   QTemporaryDir directory;
-  ArDaliBlockerService service(directory.path());
+  DaliNiraBlockerService service(directory.path());
 
   const quint64 tabA = 1001;
   const quint64 tabB = 1002;
@@ -166,7 +170,7 @@ static void counter_invariants() {
   assert(service.statsForTab(tabB).totalBlocked() == 0);
 
   // Invariant 1: Blocked network request => counter + 1
-  service.reportBlockedEvent(tabA, ArDaliBlockType::NetworkAd, 1, "https://an.facebook.com/ad");
+  service.reportBlockedEvent(tabA, DaliNiraBlockType::NetworkAd, 1, "https://an.facebook.com/ad");
   assert(service.statsForTab(tabA).blockedRequests == 1);
   assert(service.statsForTab(tabA).totalBlocked() == 1);
 
@@ -179,7 +183,7 @@ static void counter_invariants() {
   assert(service.statsForTab(tabB).totalBlocked() == 0);
 
   // Invariant 11: Real cosmetic hit => counter + 1
-  service.reportBlockedEvent(tabA, ArDaliBlockType::Cosmetic, 1, "div[data-pagelet*='Reel']");
+  service.reportBlockedEvent(tabA, DaliNiraBlockType::Cosmetic, 1, "div[data-pagelet*='Reel']");
   assert(service.statsForTab(tabA).blockedCosmetics == 1);
   assert(service.statsForTab(tabA).totalBlocked() == 2);
   assert(service.statsForTab(tabB).totalBlocked() == 0);
@@ -202,8 +206,8 @@ static void counter_invariants() {
 
   // Invariant 8: Protection disabled => counter does NOT increase
   service.settings()->setProtectionEnabled(false);
-  service.reportBlockedEvent(tabA, ArDaliBlockType::NetworkAd, 1);
-  service.reportBlockedEvent(tabA, ArDaliBlockType::Cosmetic, 1);
+  service.reportBlockedEvent(tabA, DaliNiraBlockType::NetworkAd, 1);
+  service.reportBlockedEvent(tabA, DaliNiraBlockType::Cosmetic, 1);
   assert(service.statsForTab(tabA).totalBlocked() == 0);
   service.settings()->setProtectionEnabled(true);
 
@@ -212,19 +216,19 @@ static void counter_invariants() {
   policy.adBlocking = false;
   policy.trackerProtection = true;
   service.settings()->setSitePolicy("facebook.com", policy);
-  service.reportBlockedEvent(tabA, ArDaliBlockType::NetworkAd, 1);
-  service.reportBlockedEvent(tabA, ArDaliBlockType::Cosmetic, 1);
+  service.reportBlockedEvent(tabA, DaliNiraBlockType::NetworkAd, 1);
+  service.reportBlockedEvent(tabA, DaliNiraBlockType::Cosmetic, 1);
   assert(service.statsForTab(tabA).totalBlocked() == 0);
 
   // Invariant 10: Tracker blocking still works if trackerProtection is true
-  service.reportBlockedEvent(tabA, ArDaliBlockType::Tracker, 1);
+  service.reportBlockedEvent(tabA, DaliNiraBlockType::Tracker, 1);
   assert(service.statsForTab(tabA).blockedTrackers == 1);
   assert(service.statsForTab(tabA).totalBlocked() == 1);
 
   // Tracker blocking disabled => tracker block event ignored
   policy.trackerProtection = false;
   service.settings()->setSitePolicy("facebook.com", policy);
-  service.reportBlockedEvent(tabA, ArDaliBlockType::Tracker, 1);
+  service.reportBlockedEvent(tabA, DaliNiraBlockType::Tracker, 1);
   assert(service.statsForTab(tabA).blockedTrackers == 1);
   assert(service.statsForTab(tabA).totalBlocked() == 1);
 

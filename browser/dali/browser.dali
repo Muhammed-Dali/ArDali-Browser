@@ -1,7 +1,7 @@
-// ArDaliBrowser browser-manifest proposal. This is declarative input for the
+// DaliNiraBrowser browser-manifest proposal. This is declarative input for the
 // forthcoming DALI browser compiler; it is not accepted by the current audio
 // DSL parser yet.
-browser "ArDaliBrowser" {
+browser "DaliNiraBrowser" {
   engine chromium {
     embedder qt_webengine;
     sandbox strict;

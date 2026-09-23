@@ -3,7 +3,7 @@
 #include <QHostAddress>
 #include <QSet>
 
-namespace ardali::core {
+namespace dalinira::core {
 
 QString DomainNormalizer::normalizeHost(const QString &host) {
   QString h = host.trimmed().toLower();
@@ -134,4 +134,4 @@ bool DomainNormalizer::matchesToken(
   return false;
 }
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

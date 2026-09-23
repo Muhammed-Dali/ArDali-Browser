@@ -4,7 +4,7 @@ Status: NOT READY — implementation work in progress.
 
 ## A. Legacy Password Manager Architecture
 
-The Electron source of truth is `ArDali-WebMedia/modules/credential-vault.js`.
+The Electron source of truth is `DaliNira-WebMedia/modules/credential-vault.js`.
 It stores a randomly generated data key encrypted with AES-256-GCM, wraps that
 key using scrypt plus an OS `safeStorage` device secret, encrypts each record
 with AES-256-GCM, and accepts only canonical HTTPS origins.  Renderer access is
@@ -73,8 +73,8 @@ favicon was available. No separate unencrypted origin-to-icon index is kept.
 ## D. Toolbar/Icon Parity
 
 The Qt toolbar uses the existing project password icon and opens or activates
-one `ardali://passwords` tab. TabManager rejects a duplicate internal id. The
-legacy app has `icons/app/ardali_password_manager_512.png`, but no independent
+one `dalinira://passwords` tab. TabManager rejects a duplicate internal id. The
+legacy app has `icons/app/dalinira_password_manager_512.png`, but no independent
 toolbar key-vector asset suitable for direct reuse was found; the Qt browser's
 existing `browser-icons/password.svg` is retained to match its chrome.
 

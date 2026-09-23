@@ -1,4 +1,4 @@
-# ArDaliBrowser architecture — milestone 0
+# DaliNiraBrowser architecture — milestone 0
 
 ## Engine decision
 

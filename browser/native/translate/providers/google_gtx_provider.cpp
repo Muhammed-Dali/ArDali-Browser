@@ -11,7 +11,7 @@
 namespace {
 constexpr int kDefaultTimeoutMs = 12000;
 const QString kGoogleGtxEndpoint = QStringLiteral("https://translate.googleapis.com/translate_a/single");
-const QString kSplitToken = QStringLiteral("___ARDALI_SPLIT___");
+const QString kSplitToken = QStringLiteral("___DALINIRA_SPLIT___");
 }
 
 GoogleGtxProvider::GoogleGtxProvider(QNetworkAccessManager *nam)

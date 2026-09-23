@@ -8,7 +8,7 @@
 #include <QScreen>
 #include <QVBoxLayout>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 namespace {
 QIcon createTabGroupLauncherIcon(const QColor &color = QColor("#c4c7c5")) {
@@ -128,4 +128,4 @@ void TabGroupLauncherPopup::keyPressEvent(QKeyEvent *event) {
   QWidget::keyPressEvent(event);
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

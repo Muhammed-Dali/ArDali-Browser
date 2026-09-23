@@ -11,7 +11,7 @@
 #include <QScreen>
 #include <QVBoxLayout>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 namespace {
 
@@ -467,4 +467,4 @@ void TabGroupPopup::keyPressEvent(QKeyEvent *event) {
   QWidget::keyPressEvent(event);
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

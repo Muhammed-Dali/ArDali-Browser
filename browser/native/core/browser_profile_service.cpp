@@ -100,7 +100,7 @@ QUrl frequentSiteRootUrl(const QUrl &url) {
 
 }  // namespace
 
-#include "ardali_blocker_service.h"
+#include "dalinira_blocker_service.h"
 
 BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const BrowserPolicy *policy, QObject *parent, bool privateMode, QNetworkAccessManager *suggestionNetwork)
     : QObject(parent), policy_(policy), dataDirectory_(QFileInfo(dataDirectory).absoluteFilePath()),
@@ -109,7 +109,7 @@ BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const
   QFile::setPermissions(dataDirectory_, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
   QFile::setPermissions(dataDirectory_ + QStringLiteral("/browser-preferences.ini"), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
   sanitizeStoredPersistentUrls();
-  profile_ = privateMode ? new QWebEngineProfile(this) : new QWebEngineProfile(QStringLiteral("ardali-browser"), this);
+  profile_ = privateMode ? new QWebEngineProfile(this) : new QWebEngineProfile(QStringLiteral("dalinira-browser"), this);
   if (!privateMode) {
   profile_->setPersistentStoragePath(dataDirectory + "/profile");
   profile_->setCachePath(dataDirectory + "/cache");
@@ -154,16 +154,16 @@ BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const
 
   searchSuggestions_ = new SearchSuggestionService(this, suggestionNetwork);
   searchSuggestions_->setEnabled(!privateMode && QSettings().value(QStringLiteral("browser/searchSuggestionsEnabled"), false).toBool());
-  blockerService_ = new ArDaliBlockerService(dataDirectory, this);
+  blockerService_ = new DaliNiraBlockerService(dataDirectory, this);
   credentialVault_ = new CredentialVaultManager(dataDirectory, this);
   translateService_ = new TranslateService(this, nullptr, credentialVault_);
   translateService_->loadPreferences(preferences_);
   applySecureDnsSettings();
-  connect(blockerService_->settings(), &ArDaliBlockerSettings::settingsChanged, this, &BrowserProfileService::refreshCookieFilter);
+  connect(blockerService_->settings(), &DaliNiraBlockerSettings::settingsChanged, this, &BrowserProfileService::refreshCookieFilter);
   connect(this, &BrowserProfileService::contentSettingsChanged, this, &BrowserProfileService::refreshCookieFilter);
   refreshCookieFilter();
-  connect(blockerService_, &ArDaliBlockerService::siteOpened, this, [this](const QString &host) { forgetHosts_.remove(host); });
-  connect(blockerService_, &ArDaliBlockerService::siteClosed, this, [this](const QString &host) {
+  connect(blockerService_, &DaliNiraBlockerService::siteOpened, this, [this](const QString &host) { forgetHosts_.remove(host); });
+  connect(blockerService_, &DaliNiraBlockerService::siteClosed, this, [this](const QString &host) {
     const auto policy = blockerService_->sitePolicy(host);
     if (!blockerService_->settings()->protectionEnabled() || policy.whitelisted || !policy.forgetOnClose) return;
     if (forgetHosts_.size() >= 128) return;
@@ -174,7 +174,7 @@ BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const
   connect(profile_->cookieStore(), &QWebEngineCookieStore::cookieAdded, this, [this](const QNetworkCookie &cookie) {
     QString domain = cookie.domain();
     if (domain.startsWith(QLatin1Char('.'))) domain.remove(0,1);
-    domain = ArDaliBlockerSettings::normalizeSiteHost(domain);
+    domain = DaliNiraBlockerSettings::normalizeSiteHost(domain);
     for (const auto &host : std::as_const(forgetHosts_)) {
       if (domain == host || domain.endsWith(QLatin1Char('.') + host)) {
         profile_->cookieStore()->deleteCookie(cookie);
@@ -200,14 +200,14 @@ BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const
   profile_->cookieStore()->loadAllCookies();
   interceptor_ = blockerService_->requestInterceptor();
   profile_->setUrlRequestInterceptor(interceptor_);
-  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+  if (qEnvironmentVariableIntValue("DALINIRA_FEATURE_DIAGNOSTICS") == 1) {
     qInfo().noquote() << "[BLOCKER] interceptor attached";
   }
 
   newTabBackgroundStore_ = std::make_unique<NewTabBackgroundStore>(dataDirectory);
   const QString newTabAssetsDirectory = resolveNewTabAssetsDirectory(
       QCoreApplication::applicationDirPath());
-  profile_->installUrlSchemeHandler("ardali", createNewTabSchemeHandler(
+  profile_->installUrlSchemeHandler("dalinira", createNewTabSchemeHandler(
       newTabAssetsDirectory, newTabBackgroundStore_->managedImagePath(),
       newTabBackgroundStore_->thumbnailPath(), this, this, profile_));
   generalDownloadManager_ = new GeneralDownloadManager(
@@ -225,7 +225,7 @@ GeneralDownloadManager *BrowserProfileService::downloadManager() const { return 
 
 NewTabBackgroundStore *BrowserProfileService::newTabBackgroundStore() const { return newTabBackgroundStore_.get(); }
 
-ArDaliBlockerService *BrowserProfileService::blockerService() const { return blockerService_; }
+DaliNiraBlockerService *BrowserProfileService::blockerService() const { return blockerService_; }
 CredentialVaultManager *BrowserProfileService::credentialVault() const { return credentialVault_; }
 TranslateService *BrowserProfileService::translateService() const { return translateService_; }
 
@@ -470,7 +470,7 @@ bool BrowserProfileService::isPermissibleWebOrigin(const QUrl &url) {
 
 bool BrowserProfileService::isTrustedInternalScheme(const QUrl &url) {
   if (!url.isValid()) return false;
-  return url.scheme().toLower() == QLatin1String("ardali");
+  return url.scheme().toLower() == QLatin1String("dalinira");
 }
 
 QStringList BrowserProfileService::allowedOrigins(const QString &permissionKey) const {
@@ -803,6 +803,17 @@ void BrowserProfileService::setStripsTrackingParameters(bool enabled) {
   preferences_.setValue(QStringLiteral("privacy/stripTrackingParameters"), enabled);
   preferences_.sync();
   emit trackingProtectionChanged();
+}
+
+bool BrowserProfileService::isAdultContentProtectionEnabled() const {
+  return preferences_.value(QStringLiteral("privacy/adultContentProtection"), true).toBool();
+}
+
+void BrowserProfileService::setAdultContentProtectionEnabled(bool enabled) {
+  if (isAdultContentProtectionEnabled() == enabled) return;
+  preferences_.setValue(QStringLiteral("privacy/adultContentProtection"), enabled);
+  preferences_.sync();
+  emit adultContentProtectionChanged(enabled);
 }
 
 QString BrowserProfileService::configuredDownloadDirectory() const {
@@ -1303,8 +1314,12 @@ std::optional<ClosedTabEntry> BrowserProfileService::takeClosedTab(int index) {
 
 QString BrowserProfileService::searchEngine() const {
   const QString stored = preferences_.value(QStringLiteral("browser/searchEngine"), QStringLiteral("DuckDuckGo")).toString();
-  static const QStringList builtIns{QStringLiteral("DuckDuckGo"), QStringLiteral("Google"),
-                                    QStringLiteral("Brave Search"), QStringLiteral("Bing")};
+  if (stored.compare(QLatin1String("Brave Search"), Qt::CaseInsensitive) == 0 ||
+      stored.compare(QLatin1String("Brave"), Qt::CaseInsensitive) == 0 ||
+      stored.compare(QLatin1String("Bing"), Qt::CaseInsensitive) == 0) {
+    return QStringLiteral("Google");
+  }
+  static const QStringList builtIns{QStringLiteral("Google"), QStringLiteral("DuckDuckGo"), QStringLiteral("Startpage"), QStringLiteral("Mojeek")};
   if (builtIns.contains(stored)) return stored;
   for (const auto &custom : customSearchEngines()) if (custom.name == stored) return stored;
   return QStringLiteral("DuckDuckGo");
@@ -1319,10 +1334,14 @@ quint64 BrowserProfileService::sessionBlockedCount() const {
 }
 
 void BrowserProfileService::setSearchEngine(const QString &engine) {
-  const QString trimmed = engine.trimmed();
+  QString trimmed = engine.trimmed();
   if (trimmed.isEmpty()) return;
-  static const QStringList builtIns{QStringLiteral("DuckDuckGo"), QStringLiteral("Google"),
-                                    QStringLiteral("Brave Search"), QStringLiteral("Bing")};
+  if (trimmed.compare(QLatin1String("Brave Search"), Qt::CaseInsensitive) == 0 ||
+      trimmed.compare(QLatin1String("Brave"), Qt::CaseInsensitive) == 0 ||
+      trimmed.compare(QLatin1String("Bing"), Qt::CaseInsensitive) == 0) {
+    trimmed = QStringLiteral("Google");
+  }
+  static const QStringList builtIns{QStringLiteral("Google"), QStringLiteral("DuckDuckGo"), QStringLiteral("Startpage"), QStringLiteral("Mojeek")};
   bool known = builtIns.contains(trimmed);
   for (const auto &custom : customSearchEngines()) known = known || custom.name == trimmed;
   if (!known) return;
@@ -1349,7 +1368,7 @@ bool BrowserProfileService::isValidSearchTemplate(const QString &urlTemplate) {
   const QString value = urlTemplate.trimmed();
   if (value.count(QStringLiteral("%s")) != 1) return false;
   QString probe = value;
-  probe.replace(QStringLiteral("%s"), QStringLiteral("ardali-query"));
+  probe.replace(QStringLiteral("%s"), QStringLiteral("dalinira-query"));
   const QUrl url(probe, QUrl::StrictMode);
   return url.isValid() && !url.host().isEmpty() && url.userInfo().isEmpty()
       && (url.scheme() == QLatin1String("https") || url.scheme() == QLatin1String("http"));
@@ -1359,8 +1378,7 @@ bool BrowserProfileService::saveCustomSearchEngine(const QString &name, const QS
                                                    const QString &previousName) {
   const QString cleanName = name.trimmed().left(80);
   const QString cleanTemplate = urlTemplate.trimmed();
-  static const QStringList builtIns{QStringLiteral("DuckDuckGo"), QStringLiteral("Google"),
-                                    QStringLiteral("Brave Search"), QStringLiteral("Bing")};
+  static const QStringList builtIns{QStringLiteral("DuckDuckGo"), QStringLiteral("Google")};
   if (cleanName.isEmpty() || builtIns.contains(cleanName, Qt::CaseInsensitive)
       || !isValidSearchTemplate(cleanTemplate)) return false;
   const bool replacingDefault = !previousName.isEmpty()
@@ -1413,9 +1431,11 @@ QUrl BrowserProfileService::searchUrlForEngine(const QString &engine, const QStr
     const QUrl url(resolved, QUrl::StrictMode);
     return isValidSearchTemplate(custom.urlTemplate) ? url : QUrl{};
   }
-  QUrl url(QString::fromLatin1(ardali::core::searchEngineDefinition(engine).searchUrl));
+  const auto &def = dalinira::core::searchEngineDefinition(engine);
+  QUrl url(QString::fromLatin1(def.searchUrl));
   QUrlQuery parameters;
-  parameters.addQueryItem(QStringLiteral("q"), query.trimmed());
+  const QString paramName = (def.queryParam && def.queryParam[0]) ? QString::fromLatin1(def.queryParam) : QStringLiteral("q");
+  parameters.addQueryItem(paramName, query.trimmed());
   url.setQuery(parameters);
   return url;
 }
@@ -1513,7 +1533,7 @@ void BrowserProfileService::refreshCookieFilter() {
   profile_->cookieStore()->setCookieFilter([policies,protection,global](const QWebEngineCookieStore::FilterRequest &request) {
     QString effective = global;
     if (protection) {
-      const auto policy = ArDaliBlockerSettings::findSitePolicy(request.firstPartyUrl.host(), policies);
+      const auto policy = DaliNiraBlockerSettings::findSitePolicy(request.firstPartyUrl.host(), policies);
       if (policy && !policy->whitelisted) effective = policy->cookiePolicy;
     }
     if (effective == QLatin1String("block_all")) return false;

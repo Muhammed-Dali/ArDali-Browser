@@ -18,7 +18,7 @@
 #include <QWebEngineProfile>
 #include <cassert>
 
-using namespace ardali;
+using namespace dalinira;
 
 int main(int argc, char **argv) {
   QApplication app(argc, argv);
@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
   assert(settingsRoot.isValid());
   QSettings::setDefaultFormat(QSettings::IniFormat);
   QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsRoot.path());
-  app.setOrganizationName(QStringLiteral("ArDaliTest"));
+  app.setOrganizationName(QStringLiteral("DaliNiraTest"));
   app.setApplicationName(QStringLiteral("PerformanceSettingsTest"));
 
   QSettings settings;

@@ -1,4 +1,4 @@
-ArDali DeliBlock includes bundled prebuilt DeliBlock ruleset JSON and scripting
+DaliNira DeliBlock includes bundled prebuilt DeliBlock ruleset JSON and scripting
 assets for local request filtering, cosmetic filtering, scriptlet execution, and
 developer inspection.
 
@@ -32,9 +32,9 @@ uBlock Origin Lite generated assets:
   `web_accessible_resources/`.
 - `doubleclick_instream_ad_status.js` is also represented by the equivalent
   local, non-networking safe resource `window.google_ad_status = 1;`.
-- ArDali's native request-filtering engine is a separate C++ implementation;
+- DaliNira's native request-filtering engine is a separate C++ implementation;
   this notice attributes the bundled third-party assets and does not define or
-  replace ArDali's main project license.
+  replace DaliNira's main project license.
 
 Adult-content domain protection:
 - Generated from the domain difference between StevenBlack unified hosts and

@@ -13,7 +13,7 @@
 #include <cassert>
 #include <iostream>
 
-using namespace ardali::desktop_tabs;
+using namespace dalinira::desktop_tabs;
 
 static int indexOfTabId(TabStripWidget *strip, uint64_t tabId) {
   if (!strip) return -1;
@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
   }
   QApplication app(argc, argv);
 
-  std::cout << "[TEST] Running ardali::desktop_tabs::TabDragController unit test...\n";
+  std::cout << "[TEST] Running dalinira::desktop_tabs::TabDragController unit test...\n";
 
   auto &controller = TabDragController::instance();
   assert(!controller.isActive());
@@ -99,8 +99,8 @@ int main(int argc, char *argv[]) {
   TabWindowRegistry::instance().clear();
   QWidget sourceWindow;
   sourceWindow.setGeometry(100, 100, 900, 600);
-  sourceWindow.setProperty("ardaliTabProfile", 42);
-  sourceWindow.setProperty("ardaliTabWindowType", QStringLiteral("regular"));
+  sourceWindow.setProperty("daliniraTabProfile", 42);
+  sourceWindow.setProperty("daliniraTabWindowType", QStringLiteral("regular"));
   auto *sourceStrip = new TabStripWidget(&sourceWindow);
   sourceStrip->setGeometry(0, 0, 900, 34);
   sourceStrip->addTab(101, QStringLiteral("Left"));
@@ -116,9 +116,9 @@ int main(int argc, char *argv[]) {
       [&](QWidget *, uint64_t) -> QWidget * {
         auto *shell = new QWidget;
         shell->setGeometry(0, 0, 900, 600);
-        shell->setProperty("ardaliTabProfile", 42);
-        shell->setProperty("ardaliTabWindowType", QStringLiteral("regular"));
-        shell->setProperty("ardaliDragCaptureShell", true);
+        shell->setProperty("daliniraTabProfile", 42);
+        shell->setProperty("daliniraTabWindowType", QStringLiteral("regular"));
+        shell->setProperty("daliniraDragCaptureShell", true);
         auto *strip = new TabStripWidget(shell);
         strip->setGeometry(0, 0, 900, 34);
         TabWindowRegistry::instance().registerWindow(shell, strip);

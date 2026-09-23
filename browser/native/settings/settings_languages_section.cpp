@@ -28,7 +28,7 @@
 #include <QVBoxLayout>
 #include <QWebEngineProfile>
 
-using namespace ardali::settings_ui;
+using namespace dalinira::settings_ui;
 
 namespace {
 struct LanguageMeta {
@@ -309,11 +309,11 @@ QWidget *SettingsPage::createLanguagesSection() {
   auto *uiLangCombo = new QComboBox(prefCard);
   uiLangCombo_ = uiLangCombo;
   uiLangCombo->setObjectName(QStringLiteral("settings-ui-language-combo"));
-  uiLangCombo->addItem(ardali::i18n::LanguageManager::instance().formatSystemLanguageLabel(), QStringLiteral("system"));
-  for (const auto &info : ardali::i18n::LanguageManager::instance().supportedLanguages()) {
+  uiLangCombo->addItem(dalinira::i18n::LanguageManager::instance().formatSystemLanguageLabel(), QStringLiteral("system"));
+  for (const auto &info : dalinira::i18n::LanguageManager::instance().supportedLanguages()) {
     uiLangCombo->addItem(info.nativeName, info.code);
   }
-  const QString currentPref = ardali::i18n::LanguageManager::instance().languagePreference();
+  const QString currentPref = dalinira::i18n::LanguageManager::instance().languagePreference();
   int prefIdx = uiLangCombo->findData(currentPref);
   if (prefIdx >= 0) uiLangCombo->setCurrentIndex(prefIdx);
   else uiLangCombo->setCurrentIndex(0);
@@ -321,7 +321,7 @@ QWidget *SettingsPage::createLanguagesSection() {
   connect(uiLangCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [uiLangCombo](int idx) {
     if (idx >= 0) {
       const QString chosen = uiLangCombo->itemData(idx).toString();
-      ardali::i18n::LanguageManager::instance().setLanguagePreference(chosen);
+      dalinira::i18n::LanguageManager::instance().setLanguagePreference(chosen);
     }
   });
 
@@ -388,9 +388,9 @@ QWidget *SettingsPage::createLanguagesSection() {
   section.layout->addWidget(spellCard);
 
   // =========================================================================
-  // 3. ARDALI ÇEVİRİ
+  // 3. DALINIRA ÇEVİRİ
   // =========================================================================
-  auto *translateHeading = new QLabel(QStringLiteral("ArDali Çeviri"), section.page);
+  auto *translateHeading = new QLabel(QStringLiteral("DaliNira Çeviri"), section.page);
   translateHeading->setStyleSheet(QStringLiteral("font-size: 15px; font-weight: 650; color: #f2f6fb; margin-top: 24px; margin-bottom: 6px;"));
   section.layout->addWidget(translateHeading);
 
@@ -399,8 +399,8 @@ QWidget *SettingsPage::createLanguagesSection() {
   auto *transMasterSwitch = new GlowToggleSwitch(transCard);
   transMasterSwitch->setChecked(translateSvc ? translateSvc->isEnabled() : true);
   addRow(transCard, settingRow(transCard,
-                               QStringLiteral("ArDali Çeviri'yi kullan"),
-                               QStringLiteral("Bu ayar açıkken ArDali Çeviri, siteleri tercih ettiğiniz dile çevirmeyi önerir. Ayrıca, siteleri otomatik olarak da çevirebilir."),
+                               QStringLiteral("DaliNira Çeviri'yi kullan"),
+                               QStringLiteral("Bu ayar açıkken DaliNira Çeviri, siteleri tercih ettiğiniz dile çevirmeyi önerir. Ayrıca, siteleri otomatik olarak da çevirebilir."),
                                transMasterSwitch));
 
   auto *targetCombo = new QComboBox(transCard);
@@ -537,22 +537,22 @@ QWidget *SettingsPage::createLanguagesSection() {
             "QMenu::separator { height: 1px; background: #2e3b49; margin: 4px 6px; }"
         ));
 
-        // 1. ArDali Browser'ı bu dilde görüntüle
-        const QString currentPref = ardali::i18n::LanguageManager::instance().languagePreference();
+        // 1. DaliNira Browser'ı bu dilde görüntüle
+        const QString currentPref = dalinira::i18n::LanguageManager::instance().languagePreference();
         QString targetUiCode = code.toLower();
         if (targetUiCode.startsWith(QLatin1String("tr"))) targetUiCode = QStringLiteral("tr");
         else if (targetUiCode.startsWith(QLatin1String("en"))) targetUiCode = QStringLiteral("en");
         else if (targetUiCode.startsWith(QLatin1String("ar"))) targetUiCode = QStringLiteral("ar");
 
-        auto *uiAct = menu->addAction(QStringLiteral("ArDali Browser'ı bu dilde görüntüle"));
+        auto *uiAct = menu->addAction(QStringLiteral("DaliNira Browser'ı bu dilde görüntüle"));
         uiAct->setCheckable(true);
-        const bool isCurrentUi = (currentPref == targetUiCode || (currentPref == QLatin1String("system") && targetUiCode == ardali::i18n::LanguageManager::instance().activeLanguage().code));
+        const bool isCurrentUi = (currentPref == targetUiCode || (currentPref == QLatin1String("system") && targetUiCode == dalinira::i18n::LanguageManager::instance().activeLanguage().code));
         uiAct->setChecked(isCurrentUi);
         if (isCurrentUi) {
           uiAct->setEnabled(false);
         } else {
           QObject::connect(uiAct, &QAction::triggered, [targetUiCode]() {
-            ardali::i18n::LanguageManager::instance().setLanguagePreference(targetUiCode);
+            dalinira::i18n::LanguageManager::instance().setLanguagePreference(targetUiCode);
           });
         }
 

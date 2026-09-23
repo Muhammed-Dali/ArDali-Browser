@@ -27,7 +27,7 @@
 
 #include <functional>
 
-namespace ardali::settings_ui {
+namespace dalinira::settings_ui {
 
 constexpr int kContentMaxWidth = 920;
 
@@ -500,4 +500,4 @@ inline QString settingsStyleSheet() {
   )CSS");
 }
 
-}  // namespace ardali::settings_ui
+}  // namespace dalinira::settings_ui

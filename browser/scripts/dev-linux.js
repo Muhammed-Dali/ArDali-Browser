@@ -20,7 +20,7 @@ if (!env.QT_QPA_PLATFORM && env.DISPLAY && env.XDG_SESSION_TYPE === 'wayland') {
   env.QT_QPA_PLATFORM = 'xcb';
 }
 
-const browser = spawnSync(path.join(buildDir, 'ardali-browser'), [], {
+const browser = spawnSync(path.join(buildDir, 'dalinira-browser'), [], {
   cwd: root,
   env,
   stdio: 'inherit'

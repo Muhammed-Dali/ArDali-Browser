@@ -5,7 +5,7 @@
 
 #include "core/address_input_resolver.h"
 
-using namespace ardali::core;
+using namespace dalinira::core;
 
 int main(int argc, char *argv[]) {
   QCoreApplication app(argc, argv);
@@ -231,13 +231,17 @@ int main(int argc, char *argv[]) {
   {
     assert(AddressInputResolver::searchUrlForEngine(QStringLiteral("Google"), QStringLiteral("qt webengine")).toEncoded()
            == "https://www.google.com/search?q=qt%20webengine");
-    assert(AddressInputResolver::searchUrlForEngine(QStringLiteral("Brave"), QStringLiteral("qt webengine")).toEncoded()
-           == "https://search.brave.com/search?q=qt%20webengine");
     assert(AddressInputResolver::searchUrlForEngine(QStringLiteral("DuckDuckGo"), QStringLiteral("qt webengine")).toEncoded()
            == "https://duckduckgo.com/?q=qt%20webengine");
+    assert(AddressInputResolver::searchUrlForEngine(QStringLiteral("Startpage"), QStringLiteral("qt webengine")).toEncoded()
+           == "https://www.startpage.com/sp/search?query=qt%20webengine");
+    assert(AddressInputResolver::searchUrlForEngine(QStringLiteral("Mojeek"), QStringLiteral("qt webengine")).toEncoded()
+           == "https://www.mojeek.com/search?q=qt%20webengine");
+    assert(AddressInputResolver::searchUrlForEngine(QStringLiteral("Brave"), QStringLiteral("qt webengine")).toEncoded()
+           == "https://www.google.com/search?q=qt%20webengine");
     assert(AddressInputResolver::searchUrlForEngine(QStringLiteral("Bing"), QStringLiteral("qt webengine")).toEncoded()
-           == "https://www.bing.com/search?q=qt%20webengine");
-    std::cout << "  [PASS] 16. Configured search engines (Google, Brave, DuckDuckGo, Bing) verified." << std::endl;
+           == "https://www.google.com/search?q=qt%20webengine");
+    std::cout << "  [PASS] 16. Configured search engines (Google, DuckDuckGo, Startpage, Mojeek) and legacy fallback (Brave, Bing -> Google) verified." << std::endl;
   }
 
   // 17. Pluggable Navigation Candidate Provider (Phase 2 extension interface)

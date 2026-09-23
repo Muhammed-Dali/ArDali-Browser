@@ -4,7 +4,7 @@
 #include <QTextStream>
 #include <QTimer>
 
-namespace ardali {
+namespace dalinira {
 
 SystemMemoryPressureMonitor::SystemMemoryPressureMonitor(QObject *parent)
     : QObject(parent) {
@@ -121,4 +121,4 @@ void SystemMemoryPressureMonitor::evaluateSystemPressure() {
   }
 }
 
-} // namespace ardali
+} // namespace dalinira

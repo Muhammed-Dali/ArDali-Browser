@@ -1,6 +1,6 @@
-# Testing ArDali Browser
+# Testing DaliNira Browser
 
-ArDali uses standalone C++ regression executables, CTest, and deterministic
+DaliNira uses standalone C++ regression executables, CTest, and deterministic
 local fixtures. Assertions remain enabled in Release test targets. The core
 suite must not depend on public internet services or a real user profile.
 
@@ -24,8 +24,8 @@ ctest --test-dir build -L webengine --output-on-failure
 A test executable can also be run directly for its per-case diagnostics:
 
 ```bash
-./build/ardali-browser-password-autofill-test
-./build/ardali-browser-step5-test
+./build/dalinira-browser-password-autofill-test
+./build/dalinira-browser-step5-test
 ```
 
 Do not encode the current suite count in scripts; use `ctest --test-dir build
@@ -57,7 +57,7 @@ The following older standalone programs are first-class CTest suites in
 addition to the original browser suites:
 
 - `adaptive_audio_dsp_test.cpp` — adaptive audio state and persistence.
-- `ardali_blocker_test.cpp` — blocker policy, UI, rules and migrations.
+- `dalinira_blocker_test.cpp` — blocker policy, UI, rules and migrations.
 - `internal_tab_test.cpp` — native-tab/session and private-session isolation.
 - `new_tab_background_store_test.cpp` — image validation and size limits.
 - `page_translator_test.cpp` and `translate_service_test.cpp` — translator
@@ -88,7 +88,7 @@ registered because they require an externally supplied debugging endpoint.
   `QTemporaryDir` paths. Set the QSettings format/path before constructing the
   first settings-backed object.
 - Use off-the-record or explicitly temporary `QWebEngineProfile` storage.
-- Never read or write the normal ArDali profile, credential vault or desktop
+- Never read or write the normal DaliNira profile, credential vault or desktop
   settings from a test.
 - Use loopback servers, fake `QNetworkAccessManager` replies and checked-in
   fixtures. URLs such as `example.com` used only as values do not perform
@@ -105,7 +105,7 @@ direct WebEngine test invocation, the usual local equivalent is:
 QT_QPA_PLATFORM=offscreen \
 QTWEBENGINE_DISABLE_SANDBOX=1 \
 QTWEBENGINE_CHROMIUM_FLAGS='--no-sandbox --disable-gpu' \
-./build/ardali-browser-step5-test
+./build/dalinira-browser-step5-test
 ```
 
 Disabling Chromium's sandbox is for isolated test processes in containerized
@@ -125,12 +125,12 @@ builds:
 
 ```bash
 cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-  -DARDALI_ENABLE_ASAN=ON
+  -DDALINIRA_ENABLE_ASAN=ON
 cmake -S . -B build-ubsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-  -DARDALI_ENABLE_UBSAN=ON
+  -DDALINIRA_ENABLE_UBSAN=ON
 ```
 
-ASan and UBSan flags apply to ArDali targets. Qt/Chromium libraries and
+ASan and UBSan flags apply to DaliNira targets. Qt/Chromium libraries and
 WebEngine helper processes are not rebuilt with those flags, so begin with
 native unit/component suites. Treat WebEngine sanitizer execution as a
 developer diagnostic, not a mandatory CI gate.

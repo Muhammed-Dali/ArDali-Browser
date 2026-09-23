@@ -5,7 +5,7 @@
 #include <QSet>
 #include <cstdlib>
 
-namespace ardali {
+namespace dalinira {
 
 namespace {
 
@@ -26,8 +26,8 @@ HardwareAccelerationStatus WebEngineHardwareAcceleration::detectCapability(const
   HardwareAccelerationStatus status;
 
   // 1. Check software-only environment overrides
-  if (qEnvironmentVariableIsSet("ARDALI_DISABLE_VAAPI") ||
-      qEnvironmentVariableIntValue("ARDALI_DISABLE_VAAPI") == 1 ||
+  if (qEnvironmentVariableIsSet("DALINIRA_DISABLE_VAAPI") ||
+      qEnvironmentVariableIntValue("DALINIRA_DISABLE_VAAPI") == 1 ||
       qEnvironmentVariableIsSet("LIBGL_ALWAYS_SOFTWARE")) {
     status.videoDecodeCapability = HardwareVideoDecodeCapability::DisabledByDriver;
     return status;
@@ -188,4 +188,4 @@ void WebEngineHardwareAcceleration::resetForTesting() {
   g_cachedStatus = HardwareAccelerationStatus();
 }
 
-}  // namespace ardali
+}  // namespace dalinira

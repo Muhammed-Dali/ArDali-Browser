@@ -1,5 +1,5 @@
-# robots.txt for ArDali Browser Website
+# robots.txt for DaliNira Browser Website
 User-agent: *
 Allow: /
 
-Sitemap: https://muhammed-dali.github.io/ArDali-Browser/sitemap.xml
+Sitemap: https://muhammed-dali.github.io/DaliNira-Browser/sitemap.xml

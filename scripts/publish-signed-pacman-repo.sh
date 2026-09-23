@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# ArDali Browser - Signed Pacman Repository Publisher
+# DaliNira Browser - Signed Pacman Repository Publisher
 # ==============================================================================
 # Bu betik:
 # 1. Arch Linux paketlerini (.pkg.tar.zst) GPG ile imzalar (.pkg.tar.zst.sig)
-# 2. GPG açık anahtarını (ardali.gpg) dışa aktarır
-# 3. repo-add --sign ile imzalı depo veritabanını (ardali.db.tar.zst) üretir
+# 2. GPG açık anahtarını (dalinira.gpg) dışa aktarır
+# 3. repo-add --sign ile imzalı depo veritabanını (dalinira.db.tar.zst) üretir
 # 4. GitHub Releases 'pacman-repo' etiketine tüm imzalı varlıkları yükler
 # ==============================================================================
 
@@ -15,7 +15,7 @@ set -euo pipefail
 GPG_KEY_DEFAULT="BC741FD0AC804351B0DDBB86FDFEC60C11202588"
 GPG_KEY="${GPG_KEY:-$GPG_KEY_DEFAULT}"
 RELEASE_TAG="${RELEASE_TAG:-pacman-repo}"
-REPO_NAME="ardali"
+REPO_NAME="dalinira"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -36,7 +36,7 @@ Seçenekler:
 Örnekler:
   $(basename "$0")
   $(basename "$0") --build
-  $(basename "$0") packaging/pacman/ardali-7.2.0-1-x86_64.pkg.tar.zst
+  $(basename "$0") packaging/pacman/dalinira-7.2.0-1-x86_64.pkg.tar.zst
   $(basename "$0") -k ${GPG_KEY_DEFAULT}
 EOF
   exit 0
@@ -136,7 +136,7 @@ fi
 if [[ ${#PACKAGES[@]} -eq 0 ]]; then
   echo "    Yerelde paket bulunamadı, GitHub Releases '${RELEASE_TAG}' üzerinden mevcut paket indiriliyor..."
   if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-    latest_pkg="$(gh release view "${RELEASE_TAG}" --json assets -q '.assets[] | select(.name | test("^ardali-[0-9].*\\.pkg\\.tar\\.zst$")) | .name' | sort -V | tail -n 1)"
+    latest_pkg="$(gh release view "${RELEASE_TAG}" --json assets -q '.assets[] | select(.name | test("^dalinira-[0-9].*\\.pkg\\.tar\\.zst$")) | .name' | sort -V | tail -n 1)"
     if [[ -n "${latest_pkg}" ]]; then
       echo "    İndiriliyor: ${latest_pkg}..."
       gh release download "${RELEASE_TAG}" --pattern "${latest_pkg}" --dir "${DIST_DIR}" --clobber
@@ -174,10 +174,10 @@ done
 echo "✓ Tüm paketler başarıyla imzalandı."
 
 # ------------------------------------------------------------------------------
-# 4. GPG Açık Anahtarını (ardali.gpg) Dışa Aktarma
+# 4. GPG Açık Anahtarını (dalinira.gpg) Dışa Aktarma
 # ------------------------------------------------------------------------------
-echo "==> [4/6] Kullanıcılar için GPG açık anahtarı (ardali.gpg) oluşturuluyor..."
-PUBLIC_KEY_FILE="${DIST_DIR}/ardali.gpg"
+echo "==> [4/6] Kullanıcılar için GPG açık anahtarı (dalinira.gpg) oluşturuluyor..."
+PUBLIC_KEY_FILE="${DIST_DIR}/dalinira.gpg"
 gpg --batch --yes --armor --export "${GPG_KEY}" > "${PUBLIC_KEY_FILE}"
 echo "✓ Açık anahtar hazırlandı: ${PUBLIC_KEY_FILE}"
 
@@ -191,7 +191,7 @@ FILES_ZST="${DIST_DIR}/${REPO_NAME}.files.tar.zst"
 # Eski geçici db dosyalarını temizle
 rm -f "${DIST_DIR}/${REPO_NAME}".db* "${DIST_DIR}/${REPO_NAME}".files*
 
-# repo-add --sign ile ardali.db.tar.zst oluştur
+# repo-add --sign ile dalinira.db.tar.zst oluştur
 repo-add --sign --key "${GPG_KEY}" "${DB_ZST}" "${DIST_DIR}"/*.pkg.tar.zst
 
 # Pacman HTTP sunucularının hem doğrudan .db hem de .tar.zst uzantılarına yanıt verebilmesi için
@@ -222,8 +222,8 @@ echo "==> [6/6] GitHub Releases '${RELEASE_TAG}' etiketine varlıklar yükleniyo
 if ! gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
   echo "    '${RELEASE_TAG}' release etiketi bulunamadı, oluşturuluyor..."
   gh release create "${RELEASE_TAG}" \
-    --title "ArDali Pacman Repository" \
-    --notes "Official signed Arch Linux pacman repository assets for ArDali Browser."
+    --title "DaliNira Pacman Repository" \
+    --notes "Official signed Arch Linux pacman repository assets for DaliNira Browser."
 fi
 
 UPLOAD_FILES=(
@@ -259,6 +259,6 @@ echo "==========================================================================
 echo "✓ İmzalı Arch Linux Pacman Deposu Başarıyla Güncellendi!"
 echo "--------------------------------------------------------------------------"
 echo "Depo Release URL: https://github.com/${REPO_SLUG}/releases/tag/${RELEASE_TAG}"
-echo "GPG Açık Anahtar: https://github.com/${REPO_SLUG}/releases/download/${RELEASE_TAG}/ardali.gpg"
+echo "GPG Açık Anahtar: https://github.com/${REPO_SLUG}/releases/download/${RELEASE_TAG}/dalinira.gpg"
 echo "GPG Parmak İzi:   ${GPG_KEY}"
 echo "=========================================================================="

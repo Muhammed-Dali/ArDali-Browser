@@ -1,8 +1,8 @@
-# ArDali Browser 7.0.0
+# DaliNira Browser 7.0.0
 
 Released on 11 September 2026.
 
-ArDali Browser 7.0.0 is a major release built from every completed, release-ready change since the last public release, v6.1.2. It expands the native Qt 6 / C++20 browser across privacy, media downloads, language support, permissions, navigation, desktop tabs, audio, credentials, performance, packaging, and the official website.
+DaliNira Browser 7.0.0 is a major release built from every completed, release-ready change since the last public release, v6.1.2. It expands the native Qt 6 / C++20 browser across privacy, media downloads, language support, permissions, navigation, desktop tabs, audio, credentials, performance, packaging, and the official website.
 
 ## Highlights
 
@@ -10,12 +10,12 @@ ArDali Browser 7.0.0 is a major release built from every completed, release-read
 - A full media downloader powered by yt-dlp and ffmpeg, plus an adaptive parallel engine for regular downloads.
 - Centralized English, Turkish, and Arabic localization with runtime switching, RTL/LTR metadata, system-language detection, and persistent language preferences.
 - Modern site controls, permission prompts, an encrypted local password vault, secure autofill, and hardened URL/path handling.
-- ArDali Listen music recognition with system-audio capture, device discovery, live levels, persistent settings, and dedicated internal pages.
-- The official static ArDali Browser website in English, Turkish, and Arabic, with no tracking or external runtime dependencies.
+- DaliNira Listen music recognition with system-audio capture, device discovery, live levels, persistent settings, and dedicated internal pages.
+- The official static DaliNira Browser website in English, Turkish, and Arabic, with no tracking or external runtime dependencies.
 
 ## Privacy & Ad Blocking
 
-- Made ArDali Blocker statistics tab-scoped and thread-safe, including request, cosmetic, and scriptlet hit accounting.
+- Made DaliNira Blocker statistics tab-scoped and thread-safe, including request, cosmetic, and scriptlet hit accounting.
 - Prevented duplicate cosmetic counters, preserved counts across SPA navigation, handled subdomain changes correctly, and cleaned state when tabs close.
 - Added initiator-based first-party URL fallback and expanded rules for Facebook, Reels, article layouts, and sponsored content.
 - Reflected cosmetic blocking totals correctly in the shield and site-controls UI.
@@ -28,14 +28,14 @@ ArDali Browser 7.0.0 is a major release built from every completed, release-read
 - Isolated helper-process execution and hardened URL, option, filename, and output-path validation.
 - Added automatic yt-dlp discovery/update handling and platform capability reporting.
 - Added `GeneralDownloadManager`, an adaptive 1 → 2 → 4 → 8 connection engine with preallocation, pause/resume/cancel, part-level retry, rate-limit backoff, and live-speed UI.
-- Added the toolbar download popup and the `ardali://downloads` management page.
+- Added the toolbar download popup and the `dalinira://downloads` management page.
 
 ## Languages & Translation
 
 - Added the centralized `LanguageManager` with English, Turkish, and Arabic JSON catalogs, semantic keys, English fallback, `QLocale::system()` detection, `QSettings` persistence, and live language switching.
 - Added metadata-driven RTL/LTR behavior across browser chrome, settings, menus, context menus, and the new-tab page.
 - Added a Brave-style Languages center for preferred-language ordering, `Accept-Language`, display-language selection, spell-check languages, and custom dictionary controls.
-- Added ArDali Translate settings for target, automatic, and never-translate languages, plus selectable translation providers.
+- Added DaliNira Translate settings for target, automatic, and never-translate languages, plus selectable translation providers.
 - Integrated page-language detection, translation injection, provider adapters, secrets storage, and the translation bubble.
 
 ## Permissions & Security
@@ -52,16 +52,16 @@ ArDali Browser 7.0.0 is a major release built from every completed, release-read
 - Rebuilt desktop tabs around explicit layout, drag-session, window-registry, detach/attach, animation, appearance, group, search, and hover-card components.
 - Added audible/fullscreen state handling, tab/link context menus, retry scheduling, discard/restore support, and session-compatible lifecycle cleanup.
 
-## ArDali Listen / Song Finder
+## DaliNira Listen / Song Finder
 
 - Added PipeWire and PulseAudio device discovery with policy-based input selection.
 - Added ffmpeg-backed 16 kHz mono PCM capture, live input levels, persistent device settings, and recognition lifecycle cleanup.
-- Added `ardali://listen` and `ardali://listen-settings`, single-instance internal-tab behavior, and browser menu/toolbar integration.
+- Added `dalinira://listen` and `dalinira://listen-settings`, single-instance internal-tab behavior, and browser menu/toolbar integration.
 
 ## Website
 
 - Added the official `website/` distribution in English, Turkish, and Arabic with responsive RTL support.
-- Added Download, Features, Privacy, and Open Source content using real ArDali screenshots and local assets.
+- Added Download, Features, Privacy, and Open Source content using real DaliNira screenshots and local assets.
 - Added a strict CSP/security-header template, SEO metadata, sitemap, robots policy, and zero tracking or external runtime dependencies.
 
 ## Performance & Reliability
@@ -84,4 +84,4 @@ Linux x86_64 is the verified build, test, packaging, and release platform. The p
 
 ## License and third-party components
 
-ArDali Browser is licensed under GPL-3.0-only. Bundled third-party filters and generated ruleset resources retain their respective copyright and license notices in `browser/resources/adblock/NOTICE.txt`.
+DaliNira Browser is licensed under GPL-3.0-only. Bundled third-party filters and generated ruleset resources retain their respective copyright and license notices in `browser/resources/adblock/NOTICE.txt`.

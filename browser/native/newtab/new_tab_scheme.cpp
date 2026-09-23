@@ -27,23 +27,24 @@
 namespace {
 // LocalScheme documents can have an opaque ("null") initiator. A per-handler
 // capability authenticates their image requests without trusting opaque origins.
-QHash<const ardali::core::IBrowserProfileDataProvider *, QString> faviconCapabilities;
+QHash<const dalinira::core::IBrowserProfileDataProvider *, QString> faviconCapabilities;
 }
 
-QString newTabFaviconUrl(const ardali::core::IBrowserProfileDataProvider *profileData, const QUrl &page) {
+QString newTabFaviconUrl(const dalinira::core::IBrowserProfileDataProvider *profileData, const QUrl &page) {
   const QUrl safe = BrowserSecurity::sanitizeUrlForPersistence(page);
   if (!safe.isValid() || safe.host().isEmpty() ||
       (safe.scheme() != QLatin1String("http") && safe.scheme() != QLatin1String("https")) ||
       !faviconCapabilities.contains(profileData)) return {};
-  QUrl icon(QStringLiteral("ardali://newtab/favicon"));
+  const QUrl domainUrl(safe.scheme() + QLatin1String("://") + safe.host() + QLatin1String("/"));
+  QUrl icon(QStringLiteral("dalinira://newtab/favicon"));
   QUrlQuery query;
-  query.addQueryItem(QStringLiteral("page"), safe.toString(QUrl::FullyEncoded));
+  query.addQueryItem(QStringLiteral("page"), domainUrl.toString(QUrl::FullyEncoded));
   query.addQueryItem(QStringLiteral("cap"), faviconCapabilities.value(profileData));
   icon.setQuery(query);
   return icon.toString(QUrl::FullyEncoded);
 }
 
-QJsonArray collectNewTabFrequentSites(const ardali::core::IBrowserProfileDataProvider *profileData,
+QJsonArray collectNewTabFrequentSites(const dalinira::core::IBrowserProfileDataProvider *profileData,
                                       int limit) {
   QJsonArray result;
   const int cappedLimit = std::clamp(limit, 0, 6);
@@ -62,7 +63,7 @@ QJsonArray collectNewTabFrequentSites(const ardali::core::IBrowserProfileDataPro
     QUrl lookup = BrowserSecurity::sanitizeUrlForPersistence(site.iconLookupUrl);
     if (!lookup.isValid() || lookup.host() != url.host()
         || (lookup.scheme() != QLatin1String("http") && lookup.scheme() != QLatin1String("https"))) lookup = url;
-    QUrl icon(QStringLiteral("ardali://newtab/favicon"));
+    QUrl icon(QStringLiteral("dalinira://newtab/favicon"));
     QUrlQuery iconQuery;
     iconQuery.addQueryItem(QStringLiteral("page"), lookup.toString(QUrl::FullyEncoded));
     iconQuery.addQueryItem(QStringLiteral("cap"), faviconCapabilities.value(profileData));
@@ -78,7 +79,7 @@ QJsonArray collectNewTabFrequentSites(const ardali::core::IBrowserProfileDataPro
   return result;
 }
 
-QJsonArray collectNewTabBookmarks(const ardali::core::IBrowserProfileDataProvider *profileData,
+QJsonArray collectNewTabBookmarks(const dalinira::core::IBrowserProfileDataProvider *profileData,
                                   int limit) {
   QJsonArray result;
   const int cappedLimit = std::clamp(limit, 0, 6);
@@ -107,7 +108,7 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
  public:
   NewTabSchemeHandler(const QString &assetsDirectory, const QString &managedBackgroundPath,
                       const QString &managedThumbnailPath,
-                      ardali::core::IBrowserProfileDataProvider *profileData, QObject *parent,
+                      dalinira::core::IBrowserProfileDataProvider *profileData, QObject *parent,
                       QWebEngineProfile *webProfile)
       : QWebEngineUrlSchemeHandler(parent), assetsDirectory_(assetsDirectory),
         managedBackgroundPath_(managedBackgroundPath), managedThumbnailPath_(managedThumbnailPath),
@@ -147,6 +148,13 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
       job->fail(QWebEngineUrlRequestJob::RequestDenied);
       return;
     }
+    if (url.host() == QLatin1String("blocked")) {
+      auto *buffer = new QBuffer(job);
+      buffer->setData(adultBlockedWarningHtml().toUtf8());
+      buffer->open(QIODevice::ReadOnly);
+      job->reply("text/html; charset=utf-8", buffer);
+      return;
+    }
     if (url.host() != QLatin1String("newtab") && url.host() != QLatin1String("incognito")) { job->fail(QWebEngineUrlRequestJob::UrlNotFound); return; }
     const QString requested = url.path();
     if (requested == QLatin1String("/favicon")) {
@@ -169,27 +177,51 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
       ++pendingFavicons_;
       const QPointer<NewTabSchemeHandler> handler(this);
       const QPointer<QWebEngineUrlRequestJob> guardedJob(job);
-      webProfile_->requestIconForPageURL(page, 64,
-          [guardedJob,handler,cacheKey](const QIcon &icon, const QUrl &iconUrl, const QUrl &) {
-        if (!handler) return;
-        --handler->pendingFavicons_;
-        if (!guardedJob) return;
-        const QUrl safe = BrowserSecurity::sanitizeUrlForPersistence(iconUrl);
-        if (icon.isNull() || !safe.isValid() || safe.host().isEmpty()
-            || (safe.scheme() != QLatin1String("http") && safe.scheme() != QLatin1String("https"))) {
-          handler->faviconCache_.insert(cacheKey, new QByteArray());
-          guardedJob->fail(QWebEngineUrlRequestJob::UrlNotFound);
-          return;
+      const QUrl rootPage(page.scheme() + QLatin1String("://") + page.host() + QLatin1String("/"));
+      auto sendIcon = [guardedJob, handler, cacheKey](const QIcon &icon, const QUrl &iconUrl) -> bool {
+        if (!handler || !guardedJob) return false;
+        if (icon.isNull()) return false;
+        if (!iconUrl.isEmpty()) {
+          const QUrl safe = BrowserSecurity::sanitizeUrlForPersistence(iconUrl);
+          if (!safe.isValid() || (safe.scheme() != QLatin1String("http") && safe.scheme() != QLatin1String("https"))) {
+            return false;
+          }
         }
         auto *buffer = new QBuffer(guardedJob);
         buffer->open(QIODevice::ReadWrite);
         if (!icon.pixmap(64, 64).save(buffer, "PNG")) {
-          guardedJob->fail(QWebEngineUrlRequestJob::RequestFailed);
-          return;
+          return false;
         }
         handler->faviconCache_.insert(cacheKey, new QByteArray(buffer->data()));
         buffer->seek(0);
         guardedJob->reply("image/png", buffer);
+        return true;
+      };
+
+      webProfile_->requestIconForPageURL(page, 64,
+          [guardedJob, handler, cacheKey, rootPage, page, sendIcon](const QIcon &icon, const QUrl &iconUrl, const QUrl &) {
+        if (!handler) return;
+        if (sendIcon(icon, iconUrl)) {
+          --handler->pendingFavicons_;
+          return;
+        }
+        if (page != rootPage && handler->webProfile_) {
+          handler->webProfile_->requestIconForPageURL(rootPage, 64,
+              [guardedJob, handler, cacheKey, sendIcon](const QIcon &rootIcon, const QUrl &rootIconUrl, const QUrl &) {
+            if (!handler) return;
+            --handler->pendingFavicons_;
+            if (!guardedJob) return;
+            if (!sendIcon(rootIcon, rootIconUrl)) {
+              handler->faviconCache_.insert(cacheKey, new QByteArray());
+              guardedJob->fail(QWebEngineUrlRequestJob::UrlNotFound);
+            }
+          });
+          return;
+        }
+        --handler->pendingFavicons_;
+        if (!guardedJob) return;
+        handler->faviconCache_.insert(cacheKey, new QByteArray());
+        guardedJob->fail(QWebEngineUrlRequestJob::UrlNotFound);
       });
       return;
     }
@@ -256,10 +288,10 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
       job->fail(QWebEngineUrlRequestJob::RequestDenied);
       return;
     }
-    const QByteArray mimeType = (requested == QLatin1String("/ardali-flow-blue.png")
-                                 || requested == QLatin1String("/ardali-browser.png")) ? "image/png"
+    const QByteArray mimeType = (requested == QLatin1String("/dalinira-flow-blue.png")
+                                 || requested == QLatin1String("/dalinira-browser.png")) ? "image/png"
         : (requested == QLatin1String("/google.ico") || requested == QLatin1String("/duckduckgo.ico")
-           || requested == QLatin1String("/brave.ico") || requested == QLatin1String("/bing.ico"))
+           || requested == QLatin1String("/startpage.ico") || requested == QLatin1String("/mojeek.ico"))
             ? "image/x-icon" : iconPaths.contains(requested) ? "image/svg+xml"
             : managedImage ? "image/png" : managedThumbnail ? "image/jpeg" : QByteArray{};
     if (mimeType.isEmpty()) { job->fail(QWebEngineUrlRequestJob::UrlNotFound); return; }
@@ -267,10 +299,10 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
                             : managedThumbnail ? managedThumbnailPath_ : assetsDirectory_ + requested);
     if (!file.open(QIODevice::ReadOnly) && !managedImage && !managedThumbnail) {
       QString embeddedPath;
-      if (requested == QLatin1String("/ardali-flow-blue.png")) {
-        embeddedPath = QStringLiteral(":/new-tab/ardali-flow-blue.png");
-      } else if (requested == QLatin1String("/ardali-browser.png")) {
-        embeddedPath = QStringLiteral(":/assets/icons/ardali-browser-128.png");
+      if (requested == QLatin1String("/dalinira-flow-blue.png")) {
+        embeddedPath = QStringLiteral(":/new-tab/dalinira-flow-blue.png");
+      } else if (requested == QLatin1String("/dalinira-browser.png")) {
+        embeddedPath = QStringLiteral(":/assets/icons/dalinira-browser-128.png");
       } else if (requested.endsWith(QLatin1String(".ico"))) {
         embeddedPath = QStringLiteral(":/search-engines") + requested;
       } else if (iconPaths.contains(requested)) {
@@ -292,7 +324,7 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
   QString assetsDirectory_;
   QString managedBackgroundPath_;
   QString managedThumbnailPath_;
-  ardali::core::IBrowserProfileDataProvider *profileData_ = nullptr;
+  dalinira::core::IBrowserProfileDataProvider *profileData_ = nullptr;
   QPointer<QWebEngineProfile> webProfile_;
   QString faviconCapability_;
   QString managedBackgroundCapability_;
@@ -302,8 +334,8 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
 
 }  // namespace
 
-void registerArdaliUrlSchemes() {
-  QWebEngineUrlScheme scheme("ardali");
+void registerDaliNiraUrlSchemes() {
+  QWebEngineUrlScheme scheme("dalinira");
   scheme.setSyntax(QWebEngineUrlScheme::Syntax::Host);
   // LocalAccessAllowed is required for relative packaged assets on this
   // scheme. Profile-wide LocalContentCanAccessFileUrls remains disabled, and
@@ -315,7 +347,7 @@ void registerArdaliUrlSchemes() {
 
 QWebEngineUrlSchemeHandler *createNewTabSchemeHandler(const QString &assetsDirectory, const QString &managedBackgroundPath,
                                                       const QString &managedThumbnailPath,
-                                                      ardali::core::IBrowserProfileDataProvider *profileData,
+                                                      dalinira::core::IBrowserProfileDataProvider *profileData,
                                                       QObject *parent, QWebEngineProfile *webProfile) {
   return new NewTabSchemeHandler(assetsDirectory, managedBackgroundPath, managedThumbnailPath, profileData, parent, webProfile);
 }

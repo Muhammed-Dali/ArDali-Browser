@@ -531,7 +531,7 @@ void SongFinderPage::setupUi() {
   headerLayout->setContentsMargins(24, 14, 24, 14);
   headerLayout->setSpacing(14);
 
-  auto *titleLabel = new QLabel(QStringLiteral("ArDali Pulse"), header);
+  auto *titleLabel = new QLabel(QStringLiteral("DaliNira Pulse"), header);
   titleLabel->setObjectName(QStringLiteral("sf-title"));
   headerLayout->addWidget(titleLabel);
   headerLayout->addStretch(1);
@@ -1160,9 +1160,9 @@ void SongFinderPage::addResultCard(const SongResult &result) {
 }
 
 void SongFinderPage::showAboutDialog() {
-  QMessageBox::about(this, QStringLiteral("ArDali Pulse Hakkında"),
-                     QStringLiteral("<h3>ArDali Pulse — Şarkı Bulma</h3>"
-                                    "<p>ArDali Browser için dahili ses tanıma ve müzik keşif aracı.</p>"
+  QMessageBox::about(this, QStringLiteral("DaliNira Pulse Hakkında"),
+                     QStringLiteral("<h3>DaliNira Pulse — Şarkı Bulma</h3>"
+                                    "<p>DaliNira Browser için dahili ses tanıma ve müzik keşif aracı.</p>"
                                     "<p><b>Özellikler:</b></p>"
                                     "<ul>"
                                     "<li>Akıllı Ses Yönlendirme (Sistem Sesi + Mikrofon)</li>"
@@ -1170,5 +1170,5 @@ void SongFinderPage::showAboutDialog() {
                                     "<li>Gerçek Zamanlı Akustik Parmak İzi (Shazam Uyumlu)</li>"
                                     "<li>YouTube & YouTube Music Entegrasyonu</li>"
                                     "</ul>"
-                                    "<p>© 2026 ArDali Project</p>"));
+                                    "<p>© 2026 DaliNira Project</p>"));
 }

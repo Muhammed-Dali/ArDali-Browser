@@ -34,9 +34,10 @@ bool BrowserPolicy::allowsNavigation(const QUrl &url) const {
   if (!valid_ || !allowed_.contains("navigation.http_https")) return false;
   const QString scheme = url.scheme().toLower();
   if (scheme == QStringLiteral("http") || scheme == QStringLiteral("https")) return true;
-  if (scheme != QStringLiteral("ardali")) return false;
+  if (scheme != QStringLiteral("dalinira")) return false;
   const QString host = url.host().toLower();
-  return host == QStringLiteral("newtab") || host == QStringLiteral("bypass-strictblock");
+  return host == QStringLiteral("newtab") || host == QStringLiteral("bypass-strictblock")
+      || host == QStringLiteral("blocked");
 }
 
 bool BrowserPolicy::allowsDownloadPrompt() const {

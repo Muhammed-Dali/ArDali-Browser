@@ -3,10 +3,10 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { parseArDaliBrowserManifest, validateBrowserManifest } = require('../src/browser-manifest');
+const { parseDaliNiraBrowserManifest, validateBrowserManifest } = require('../src/browser-manifest');
 
 const sampleManifestSource = `
-browser "ArDaliBrowserTest" {
+browser "DaliNiraBrowserTest" {
   engine chromium {
     embedder qt_webengine;
     sandbox strict;
@@ -30,8 +30,8 @@ browser "ArDaliBrowserTest" {
   }
 }
 `;
-const manifest = parseArDaliBrowserManifest(sampleManifestSource);
-assert.equal(manifest.name, 'ArDaliBrowserTest');
+const manifest = parseDaliNiraBrowserManifest(sampleManifestSource);
+assert.equal(manifest.name, 'DaliNiraBrowserTest');
 assert.equal(manifest.engineName, 'chromium');
 assert.equal(manifest.engine.embedder, 'qt_webengine');
 assert.equal(validateBrowserManifest(manifest), true);

@@ -384,7 +384,7 @@ bool testHistoryRemovalAndReRecognition() {
 }
 
 bool testPrivateHistoryIsolationAndBoundedLoad() {
-  QSettings persisted(QStringLiteral("ArDali"), QStringLiteral("SongFinderHistory"));
+  QSettings persisted(QStringLiteral("DaliNira"), QStringLiteral("SongFinderHistory"));
   persisted.clear();
   persisted.beginWriteArray(QStringLiteral("history"), 250);
   for (int i = 0; i < 250; ++i) {
@@ -434,8 +434,8 @@ int main(int argc, char *argv[]) {
   if (!settingsDirectory.isValid()) return 1;
   QSettings::setDefaultFormat(QSettings::IniFormat);
   QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
-  app.setOrganizationName(QStringLiteral("ArDali"));
-  app.setApplicationName(QStringLiteral("ArDaliBrowser-Test"));
+  app.setOrganizationName(QStringLiteral("DaliNira"));
+  app.setApplicationName(QStringLiteral("DaliNiraBrowser-Test"));
 
   qInfo() << "Running Song Finder unit tests...";
 

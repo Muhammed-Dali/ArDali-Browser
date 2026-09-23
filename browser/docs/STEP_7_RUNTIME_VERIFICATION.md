@@ -2,7 +2,7 @@
 
 ## Automated transfer fixture
 
-`ardali-browser-state-test` now creates a muted looping WAV audio fixture in
+`dalinira-browser-state-test` now creates a muted looping WAV audio fixture in
 the test page. Its temporary profile disables `PlaybackRequiresUserGesture`
 only because the automated fixture cannot produce a real user gesture; the
 production profile is unchanged.
@@ -14,7 +14,7 @@ The test proves across main host → detached host → main host:
 - the same HTML media element remains playing;
 - its `currentTime` increases after both transfers.
 
-Setting `ARDALI_TAB_ATTACH_RUNTIME_TEST=1` when launching the browser runs the
+Setting `DALINIRA_TAB_ATTACH_RUNTIME_TEST=1` when launching the browser runs the
 browser-shell attach fixture. It additionally verifies that the detached shell
 contains no legacy manual attach action, the requested insertion index is
 honored, ownership returns to the root window, and JavaScript/history state is

@@ -12,12 +12,12 @@
 #include "i18n/i18n.h"
 #include "i18n/language_manager.h"
 
-using namespace ardali::i18n;
+using namespace dalinira::i18n;
 
 int main(int argc, char **argv) {
   // Use a dedicated organization and application name to isolate test QSettings
   QApplication app(argc, argv);
-  app.setOrganizationName(QStringLiteral("ArDaliTestOrg"));
+  app.setOrganizationName(QStringLiteral("DaliNiraTestOrg"));
   app.setApplicationName(QStringLiteral("LanguageManagerTest"));
   QTemporaryDir settingsRoot;
   assert(settingsRoot.isValid());
@@ -234,7 +234,7 @@ int main(int argc, char **argv) {
   QLineEdit omnibox;
   omnibox.setLayoutDirection(Qt::LeftToRight);
   omnibox.setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-  omnibox.setText(QStringLiteral("https://ardali.test/browse"));
+  omnibox.setText(QStringLiteral("https://dalinira.test/browse"));
 
   assert(omnibox.layoutDirection() == Qt::LeftToRight);
 

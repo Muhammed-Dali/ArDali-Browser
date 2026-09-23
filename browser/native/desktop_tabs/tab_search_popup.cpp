@@ -15,7 +15,7 @@
 #include "browser_profile_service.h"
 #include "tab_window_registry.h"
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 namespace {
 
@@ -34,9 +34,9 @@ QString formatRelativeTime(const QDateTime &dt) {
 QString displaySubtitleForUrl(const QUrl &url, const QDateTime &time = {}) {
   QString host = url.host();
   if (host.isEmpty()) {
-    if (url.scheme() == QLatin1String("ardali")) {
-      host = QStringLiteral("ardali://") + url.host();
-      if (host == QLatin1String("ardali://")) host = url.toString();
+    if (url.scheme() == QLatin1String("dalinira")) {
+      host = QStringLiteral("dalinira://") + url.host();
+      if (host == QLatin1String("dalinira://")) host = url.toString();
     } else {
       host = url.toDisplayString();
     }
@@ -562,4 +562,4 @@ void TabSearchPopup::keyPressEvent(QKeyEvent *event) {
   }
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

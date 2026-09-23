@@ -2,12 +2,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { parseArDaliBrowserManifest, validateBrowserManifest } = require('../../dali-lang');
+const { parseDaliNiraBrowserManifest, validateBrowserManifest } = require('../../dali-lang');
 
 const [sourcePath, outputPath] = process.argv.slice(2);
 if (!sourcePath || !outputPath) throw new Error('Usage: generate-browser-policy <browser.dali> <output.json>');
 const source = fs.readFileSync(sourcePath, 'utf8');
-const manifest = parseArDaliBrowserManifest(source);
+const manifest = parseDaliNiraBrowserManifest(source);
 validateBrowserManifest(manifest);
 const policy = {
   version: 1,

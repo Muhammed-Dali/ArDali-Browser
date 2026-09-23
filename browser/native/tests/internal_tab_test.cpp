@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
   TabManager manager;
 
   const auto webId = manager.registerTab(&web, &owner, false, QStringLiteral("Web"));
-  manager.updateUrl(webId, QUrl(QStringLiteral("https://example.com/callback?code=synthetic-code&q=ardali")));
+  manager.updateUrl(webId, QUrl(QStringLiteral("https://example.com/callback?code=synthetic-code&q=dalinira")));
   if (webId.isNull() || !manager.activate(webId)) return 1;
 
   QWidget settings;
@@ -71,12 +71,12 @@ int main(int argc, char *argv[]) {
   if (sessionPermissions & (QFileDevice::ReadGroup | QFileDevice::ReadOther
                             | QFileDevice::WriteGroup | QFileDevice::WriteOther)) return 1;
   const QVector<SavedTab> restored = sessions.load();
-  if (restored.size() != 1 || restored.front().url != QUrl(QStringLiteral("https://example.com/callback?q=ardali"))
+  if (restored.size() != 1 || restored.front().url != QUrl(QStringLiteral("https://example.com/callback?q=dalinira"))
       || !restored.front().active) return 1;
   QFile persistedSession(directory.path() + QStringLiteral("/tabs.session.json"));
   if (!persistedSession.open(QIODevice::ReadOnly)) return 1;
   const QByteArray sessionBytes = persistedSession.readAll();
-  if (sessionBytes.contains("synthetic-code") || !sessionBytes.contains("q=ardali")) return 1;
+  if (sessionBytes.contains("synthetic-code") || !sessionBytes.contains("q=dalinira")) return 1;
 
   if (!manager.remove(settingsId) || !manager.findInternal(&owner, QStringLiteral("settings")).isNull()) return 1;
   QWidget reopenedSettings;

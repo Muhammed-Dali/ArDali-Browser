@@ -108,7 +108,7 @@ function validateBrowserManifest(manifest) {
 // The engine's name appears between `engine` and its block, unlike the other
 // sections. Keep the public parser strict while supporting that concise DALI
 // declaration form.
-function parseArDaliBrowserManifest(source) {
+function parseDaliNiraBrowserManifest(source) {
   const normalized = String(source || '').replace(/\bengine\s+(chromium|gecko)\s*\{/g, 'engine { engine_name $1;');
   const manifest = parseBrowserManifest(normalized);
   manifest.engineName = manifest.engine.engine_name;
@@ -116,4 +116,4 @@ function parseArDaliBrowserManifest(source) {
   return manifest;
 }
 
-module.exports = { tokenizeBrowserManifest, parseArDaliBrowserManifest, validateBrowserManifest };
+module.exports = { tokenizeBrowserManifest, parseDaliNiraBrowserManifest, validateBrowserManifest };

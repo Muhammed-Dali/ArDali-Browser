@@ -2,7 +2,7 @@
 
 #include "audio/audio_device_manager.h"
 #include "audio/web_audio_effects_controller.h"
-#include "blocker/ardali_blocker_service.h"
+#include "blocker/dalinira_blocker_service.h"
 #include "desktop_tabs/tab_manager.h"
 #include "desktop_tabs/tab_performance_manager.h"
 #include "pulse/song_recognition_service.h"
@@ -76,7 +76,7 @@ ProcessMemorySample measureProcess(qint64 pid) {
 }  // namespace
 
 PerformanceDiagnostics::PerformanceDiagnostics(TabManager *tabManager,
-                                               ArDaliBlockerService *blocker,
+                                               DaliNiraBlockerService *blocker,
                                                WebAudioEffectsController *audio,
                                                SongRecognitionService *songFinder,
                                                QObject *parent)

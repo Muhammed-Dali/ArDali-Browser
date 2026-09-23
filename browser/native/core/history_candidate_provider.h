@@ -12,7 +12,7 @@
 #include "browser_profile_data_provider.h"
 #include "navigation_candidate.h"
 
-namespace ardali::core {
+namespace dalinira::core {
 
 class HistoryCandidateProvider : public QObject, public INavigationCandidateProvider {
   Q_OBJECT
@@ -60,4 +60,4 @@ class HistoryCandidateProvider : public QObject, public INavigationCandidateProv
   mutable QHash<QString, QVector<IndexedHistoryItem>> tokenIndex_;
 };
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

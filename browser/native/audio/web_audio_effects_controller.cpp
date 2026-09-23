@@ -23,8 +23,8 @@
 
 namespace {
 bool isAudioEligibleView(const QWebEngineView *view, const QUrl &url) {
-  return ardali::audio::isSupportedAudioPlatform(url)
-      || (view && view->property("ardali-trusted-local-media").toBool()
+  return dalinira::audio::isSupportedAudioPlatform(url)
+      || (view && view->property("dalinira-trusted-local-media").toBool()
           && url.isLocalFile());
 }
 
@@ -233,12 +233,12 @@ QString resolveDaliModulePath(const QString &relativeSubPath) {
   const QDir appDir(QCoreApplication::applicationDirPath());
   const QStringList candidates{
       appDir.absoluteFilePath(relativeSubPath),
-      appDir.absoluteFilePath(QStringLiteral("../lib/ardali-browser/") + relativeSubPath),
-      appDir.absoluteFilePath(QStringLiteral("../lib64/ardali-browser/") + relativeSubPath),
-      QStringLiteral("/usr/lib/ardali-browser/") + relativeSubPath,
-      QStringLiteral("/usr/local/lib/ardali-browser/") + relativeSubPath,
-      appDir.absoluteFilePath(QStringLiteral("../share/ardali-browser/") + relativeSubPath),
-      QStringLiteral("/usr/share/ardali-browser/") + relativeSubPath,
+      appDir.absoluteFilePath(QStringLiteral("../lib/dalinira-browser/") + relativeSubPath),
+      appDir.absoluteFilePath(QStringLiteral("../lib64/dalinira-browser/") + relativeSubPath),
+      QStringLiteral("/usr/lib/dalinira-browser/") + relativeSubPath,
+      QStringLiteral("/usr/local/lib/dalinira-browser/") + relativeSubPath,
+      appDir.absoluteFilePath(QStringLiteral("../share/dalinira-browser/") + relativeSubPath),
+      QStringLiteral("/usr/share/dalinira-browser/") + relativeSubPath,
   };
   for (const QString &candidate : candidates) {
     if (QFile::exists(candidate)) {
@@ -264,9 +264,9 @@ WebAudioEffectsController::WebAudioEffectsController(QObject *parent, bool persi
   enabled_ = settings.value(QStringLiteral("audioEffects/web/global/enabled"), false).toBool();
   preampDb_ = finiteClamped(settings.value(QStringLiteral("audioEffects/web/output/preampDb"), 0.0).toDouble(),
                             kMinPreampDb, kMaxPreampDb, 0.0);
-  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+  if (qEnvironmentVariableIntValue("DALINIRA_FEATURE_DIAGNOSTICS") == 1) {
     qInfo().noquote() << "[AUDIO] DALI runtime initialized";
-    qInfo().noquote() << "[AUDIO] DSP module loaded:" << ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH;
+    qInfo().noquote() << "[AUDIO] DSP module loaded:" << DALINIRA_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH;
   }
   equalizerBands_.resize(equalizerFrequencies().size());
   for (int index = 0; index < equalizerBands_.size(); ++index) {
@@ -432,10 +432,10 @@ bool WebAudioEffectsController::autoGainEnabled() const {
   return moduleEnabled(QLatin1String(kAutoGainModuleId));
 }
 
-void WebAudioEffectsController::setPerformancePolicyMode(ardali::PerformancePolicyMode mode) {
+void WebAudioEffectsController::setPerformancePolicyMode(dalinira::PerformancePolicyMode mode) {
   if (policyMode_ == mode) return;
   policyMode_ = mode;
-  if (policyMode_ == ardali::PerformancePolicyMode::MemorySaver) {
+  if (policyMode_ == dalinira::PerformancePolicyMode::MemorySaver) {
     applyToAllWebViews();
   }
 }
@@ -455,7 +455,7 @@ void WebAudioEffectsController::registerWebView(QWebEngineView *view, const QUrl
   const auto known = std::find_if(views_.cbegin(), views_.cend(), [view](const QPointer<QWebEngineView> &item) { return item == view; });
   if (known != views_.cend()) return;
   views_.push_back(view);
-  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+  if (qEnvironmentVariableIntValue("DALINIRA_FEATURE_DIAGNOSTICS") == 1) {
     qInfo().noquote() << "[AUDIO] page registered:" << view;
   }
   updateAudioPolicyForView(view, initialUrl.isEmpty() ? view->url() : initialUrl);
@@ -489,7 +489,7 @@ int WebAudioEffectsController::audioEnabledWebViewCount() const {
 
 int WebAudioEffectsController::activeGraphViewCount() const {
   return static_cast<int>(std::count_if(views_.cbegin(), views_.cend(), [](const QPointer<QWebEngineView> &view) {
-    return view && view->property("ardali-audio-graph-active").toBool();
+    return view && view->property("dalinira-audio-graph-active").toBool();
   }));
 }
 
@@ -529,8 +529,8 @@ void WebAudioEffectsController::setEnabled(bool enabled) {
     pendingEqualizerBands_.clear();
     applyToAllWebViews();
   }
-  if (qEnvironmentVariableIsSet("ARDALI_AUDIO_EFFECTS_TRACE")) {
-    qInfo().noquote() << "[ArDali DSP] master requested:" << (enabled_ ? "enabled" : "disabled")
+  if (qEnvironmentVariableIsSet("DALINIRA_AUDIO_EFFECTS_TRACE")) {
+    qInfo().noquote() << "[DaliNira DSP] master requested:" << (enabled_ ? "enabled" : "disabled")
                       << "views=" << views_.size() << "bass=" << bassDb_ << "mid=" << midDb_;
   }
   emit stateChanged();
@@ -1193,7 +1193,7 @@ void WebAudioEffectsController::scheduleApply() {
 
 QString WebAudioEffectsController::daliModuleSource() const {
   if (!daliModuleSource_.isEmpty()) return daliModuleSource_;
-  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH));
+  const QString path = resolveDaliModulePath(QStringLiteral(DALINIRA_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH));
   QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliModuleSource_ = QString::fromUtf8(file.readAll());
@@ -1202,7 +1202,7 @@ QString WebAudioEffectsController::daliModuleSource() const {
 
 QString WebAudioEffectsController::daliEqModuleSource() const {
   if (!daliEqModuleSource_.isEmpty()) return daliEqModuleSource_;
-  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_EQ32_DALI_MODULE_RELATIVE_PATH));
+  const QString path = resolveDaliModulePath(QStringLiteral(DALINIRA_WEB_EQ32_DALI_MODULE_RELATIVE_PATH));
   QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliEqModuleSource_ = QString::fromUtf8(file.readAll());
@@ -1211,7 +1211,7 @@ QString WebAudioEffectsController::daliEqModuleSource() const {
 
 QString WebAudioEffectsController::daliCompressorModuleSource() const {
   if (!daliCompressorModuleSource_.isEmpty()) return daliCompressorModuleSource_;
-  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH));
+  const QString path = resolveDaliModulePath(QStringLiteral(DALINIRA_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH));
   QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliCompressorModuleSource_ = QString::fromUtf8(file.readAll());
@@ -1220,7 +1220,7 @@ QString WebAudioEffectsController::daliCompressorModuleSource() const {
 
 QString WebAudioEffectsController::daliLimiterModuleSource() const {
   if (!daliLimiterModuleSource_.isEmpty()) return daliLimiterModuleSource_;
-  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH));
+  const QString path = resolveDaliModulePath(QStringLiteral(DALINIRA_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH));
   QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliLimiterModuleSource_ = QString::fromUtf8(file.readAll());
@@ -1229,7 +1229,7 @@ QString WebAudioEffectsController::daliLimiterModuleSource() const {
 
 QString WebAudioEffectsController::daliBassEnhancerModuleSource() const {
   if (!daliBassEnhancerModuleSource_.isEmpty()) return daliBassEnhancerModuleSource_;
-  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH));
+  const QString path = resolveDaliModulePath(QStringLiteral(DALINIRA_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH));
   QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliBassEnhancerModuleSource_ = QString::fromUtf8(file.readAll());
@@ -1238,7 +1238,7 @@ QString WebAudioEffectsController::daliBassEnhancerModuleSource() const {
 
 QString WebAudioEffectsController::daliAutoGainModuleSource() const {
   if (!daliAutoGainModuleSource_.isEmpty()) return daliAutoGainModuleSource_;
-  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH));
+  const QString path = resolveDaliModulePath(QStringLiteral(DALINIRA_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH));
   QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliAutoGainModuleSource_ = QString::fromUtf8(file.readAll());
@@ -1292,9 +1292,9 @@ QString WebAudioEffectsController::parameterUpdateScript() const {
       {QStringLiteral("preset"), autoGainPreset_},
   };
   const QString autoGainConfigJson = QString::fromUtf8(QJsonDocument(autoGainConfig).toJson(QJsonDocument::Compact));
-  const QString policyModeStr = policyMode_ == ardali::PerformancePolicyMode::MemorySaver
+  const QString policyModeStr = policyMode_ == dalinira::PerformancePolicyMode::MemorySaver
       ? QStringLiteral("memory_saver")
-      : (policyMode_ == ardali::PerformancePolicyMode::MaximumPerformance
+      : (policyMode_ == dalinira::PerformancePolicyMode::MaximumPerformance
              ? QStringLiteral("maximum_performance")
              : QStringLiteral("balanced"));
 
@@ -1323,7 +1323,7 @@ QString WebAudioEffectsController::parameterUpdateScript() const {
       activeSubpanel: '%19',
       forceRefresh: %20
     };
-    const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+    const root = window.__DALINIRA_WEB_DALI_OUTPUT__;
     if (!root || !root.processMedia) {
       return { ok: false, enabled: enabled, mediaCount: 0, sampleRates: [], moduleLoaded: false, needsBootstrap: enabled };
     }
@@ -1372,7 +1372,7 @@ QString WebAudioEffectsController::equalizerBandUpdateScript(int index) const {
   try {
     const index = %1;
     const value = %2;
-    const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+    const root = window.__DALINIRA_WEB_DALI_OUTPUT__;
     if (!root || !root.graphList || !root.smoothParam) return;
     for (const graph of root.graphList) {
       if (!graph || graph.bypass) continue;
@@ -1385,7 +1385,7 @@ QString WebAudioEffectsController::equalizerBandUpdateScript(int index) const {
       }
       const band = graph.eqBandNodes[index];
       if (!band || !band.gain) continue;
-      const prior = graph._ardaliBands || (graph._ardaliBands = []);
+      const prior = graph._daliniraBands || (graph._daliniraBands = []);
       if (Number.isFinite(prior[index]) && Math.abs(prior[index] - value) < 0.0001) continue;
       prior[index] = value;
       root.smoothParam(band.gain, value, graph.ctx, 0.140);
@@ -1457,11 +1457,11 @@ QString WebAudioEffectsController::injectionScript() const {
   };
   const QString autoGainConfigJson = QString::fromUtf8(QJsonDocument(autoGainConfig).toJson(QJsonDocument::Compact));
   const QString supportedDomainsJson = QString::fromUtf8(
-      QJsonDocument(QJsonArray::fromStringList(ardali::audio::supportedAudioPlatformDomains()))
+      QJsonDocument(QJsonArray::fromStringList(dalinira::audio::supportedAudioPlatformDomains()))
           .toJson(QJsonDocument::Compact));
-  const QString policyModeStr = policyMode_ == ardali::PerformancePolicyMode::MemorySaver
+  const QString policyModeStr = policyMode_ == dalinira::PerformancePolicyMode::MemorySaver
       ? QStringLiteral("memory_saver")
-      : (policyMode_ == ardali::PerformancePolicyMode::MaximumPerformance
+      : (policyMode_ == dalinira::PerformancePolicyMode::MaximumPerformance
              ? QStringLiteral("maximum_performance")
              : QStringLiteral("balanced"));
 
@@ -1472,7 +1472,7 @@ QString WebAudioEffectsController::injectionScript() const {
     const protocol = String(location.protocol || '').toLowerCase();
     const hostname = String(location.hostname || '').toLowerCase();
     // file: documents receive this bootstrap only when the native view is the
-    // root-confined ArDali local player (see isAudioEligibleView()).
+    // root-confined DaliNira local player (see isAudioEligibleView()).
     const supported = protocol === 'file:' || ((protocol === 'http:' || protocol === 'https:')
       && supportedDomains.some((domain) => hostname === domain || hostname.endsWith('.' + domain)));
     if (!supported) {
@@ -1505,7 +1505,7 @@ QString WebAudioEffectsController::injectionScript() const {
     const panelVisible = %24;
     const activeSubpanel = '%25';
 
-    const root = window.__ARDALI_WEB_DALI_OUTPUT__ = window.__ARDALI_WEB_DALI_OUTPUT__ || {};
+    const root = window.__DALINIRA_WEB_DALI_OUTPUT__ = window.__DALINIRA_WEB_DALI_OUTPUT__ || {};
     root.graphs = root.graphs || new WeakMap();
     root.graphList = root.graphList || new Set();
 
@@ -1527,7 +1527,7 @@ QString WebAudioEffectsController::injectionScript() const {
         catch (fallbackError) {
           root.lastRuntimeError = 'Web Audio parameter apply failed: '
             + String(fallbackError && fallbackError.message ? fallbackError.message : (error && error.message ? error.message : error));
-          console.error('[ArDali DSP] ' + root.lastRuntimeError);
+          console.error('[DaliNira DSP] ' + root.lastRuntimeError);
         }
       }
     };
@@ -1596,7 +1596,7 @@ QString WebAudioEffectsController::injectionScript() const {
       if (parsed && Object.values(parsed).every(Number.isFinite)) root.compressorTemplate = parsed;
       else {
         root.compressorTemplateError = 'DALI dynamic compressor template could not be parsed';
-        console.error('[ArDali DSP] ' + root.compressorTemplateError);
+        console.error('[DaliNira DSP] ' + root.compressorTemplateError);
       }
     }
     if (!root.userLimiterTemplate && limiterModuleCode) {
@@ -1608,7 +1608,7 @@ QString WebAudioEffectsController::injectionScript() const {
       if (parsed && Object.values(parsed).every(Number.isFinite)) root.userLimiterTemplate = parsed;
       else {
         root.userLimiterTemplateError = 'DALI user Limiter template could not be parsed';
-        console.error('[ArDali DSP] ' + root.userLimiterTemplateError);
+        console.error('[DaliNira DSP] ' + root.userLimiterTemplateError);
       }
     }
     if (!root.bassEnhancerTemplate && bassEnhancerModuleCode) {
@@ -1638,7 +1638,7 @@ QString WebAudioEffectsController::injectionScript() const {
         root.bassEnhancerTemplate = parsed;
       } else {
         root.bassEnhancerTemplateError = 'DALI Bass Enhancer template could not be parsed';
-        console.error('[ArDali DSP] ' + root.bassEnhancerTemplateError);
+        console.error('[DaliNira DSP] ' + root.bassEnhancerTemplateError);
       }
     }
     if (!root.autoGainTemplate && autoGainModuleCode) {
@@ -1652,7 +1652,7 @@ QString WebAudioEffectsController::injectionScript() const {
         };
       } else {
         root.autoGainTemplateError = 'DALI Auto Gain template could not be parsed';
-        console.error('[ArDali DSP] ' + root.autoGainTemplateError);
+        console.error('[DaliNira DSP] ' + root.autoGainTemplateError);
       }
     }
 
@@ -1782,7 +1782,7 @@ QString WebAudioEffectsController::injectionScript() const {
         graph.autoGainAnalyser.getByteTimeDomainData(graph.autoGainBuffer);
       } catch (error) {
         root.lastRuntimeError = 'Auto Gain detector read failed: ' + String(error && error.message ? error.message : error);
-        console.error('[ArDali DSP] ' + root.lastRuntimeError);
+        console.error('[DaliNira DSP] ' + root.lastRuntimeError);
         state.runtimeAvailable = false;
         state.enabled = false;
         graph.autoGainEnabled = false;
@@ -2178,24 +2178,24 @@ QString WebAudioEffectsController::injectionScript() const {
         graph[key] = value;
         root.smoothParam(param, value, graph.ctx, rampSeconds);
       };
-      update('_ardaliBassEnhancerInputGain', graph.bassEnhancerInputGain.gain, params.inputGain, 0.012);
-      update('_ardaliBassEnhancerFrequency', graph.bassEnhancerFilter.frequency, params.frequencyHz, 0.014);
-      update('_ardaliBassEnhancerShelfGain', graph.bassEnhancerFilter.gain, params.shelfGain, 0.014);
-      update('_ardaliBassEnhancerWidth', graph.bassEnhancerFilter.Q, params.width, 0.014);
-      update('_ardaliBassEnhancerSubFrequency', graph.bassEnhancerSubPeak.frequency, params.subFrequency, 0.014);
-      update('_ardaliBassEnhancerSubGain', graph.bassEnhancerSubPeak.gain, params.subGain, 0.014);
-      update('_ardaliBassEnhancerSubQ', graph.bassEnhancerSubPeak.Q, params.subQ, 0.014);
-      update('_ardaliBassEnhancerPresenceFrequency', graph.bassEnhancerPresencePeak.frequency, params.presenceFrequency, 0.014);
-      update('_ardaliBassEnhancerPresenceGain', graph.bassEnhancerPresencePeak.gain, params.presenceGain, 0.014);
-      update('_ardaliBassEnhancerPresenceQ', graph.bassEnhancerPresencePeak.Q, params.presenceQ, 0.014);
-      update('_ardaliBassEnhancerHarmonicCutoff', graph.bassEnhancerHarmonicLowpass.frequency, params.harmonicCutoff, 0.014);
-      update('_ardaliBassEnhancerHarmonicDrive', graph.bassEnhancerHarmonicsDrive.gain, params.harmonicDrive, 0.012);
-      update('_ardaliBassEnhancerWet', graph.bassEnhancerWetGain.gain, params.wetGain, 0.012);
-      update('_ardaliBassEnhancerDry', graph.bassEnhancerDryGain.gain, params.dryGain, 0.012);
-      update('_ardaliBassEnhancerDipFrequency', graph.bassEnhancerBodyDip.frequency, params.dipFrequency, 0.014);
-      update('_ardaliBassEnhancerDipGain', graph.bassEnhancerBodyDip.gain, params.dipGain, 0.014);
-      update('_ardaliBassEnhancerDipQ', graph.bassEnhancerBodyDip.Q, params.dipQ, 0.014);
-      update('_ardaliBassEnhancerOutput', graph.bassEnhancerOutputTrim.gain, params.outputGain, 0.012);
+      update('_daliniraBassEnhancerInputGain', graph.bassEnhancerInputGain.gain, params.inputGain, 0.012);
+      update('_daliniraBassEnhancerFrequency', graph.bassEnhancerFilter.frequency, params.frequencyHz, 0.014);
+      update('_daliniraBassEnhancerShelfGain', graph.bassEnhancerFilter.gain, params.shelfGain, 0.014);
+      update('_daliniraBassEnhancerWidth', graph.bassEnhancerFilter.Q, params.width, 0.014);
+      update('_daliniraBassEnhancerSubFrequency', graph.bassEnhancerSubPeak.frequency, params.subFrequency, 0.014);
+      update('_daliniraBassEnhancerSubGain', graph.bassEnhancerSubPeak.gain, params.subGain, 0.014);
+      update('_daliniraBassEnhancerSubQ', graph.bassEnhancerSubPeak.Q, params.subQ, 0.014);
+      update('_daliniraBassEnhancerPresenceFrequency', graph.bassEnhancerPresencePeak.frequency, params.presenceFrequency, 0.014);
+      update('_daliniraBassEnhancerPresenceGain', graph.bassEnhancerPresencePeak.gain, params.presenceGain, 0.014);
+      update('_daliniraBassEnhancerPresenceQ', graph.bassEnhancerPresencePeak.Q, params.presenceQ, 0.014);
+      update('_daliniraBassEnhancerHarmonicCutoff', graph.bassEnhancerHarmonicLowpass.frequency, params.harmonicCutoff, 0.014);
+      update('_daliniraBassEnhancerHarmonicDrive', graph.bassEnhancerHarmonicsDrive.gain, params.harmonicDrive, 0.012);
+      update('_daliniraBassEnhancerWet', graph.bassEnhancerWetGain.gain, params.wetGain, 0.012);
+      update('_daliniraBassEnhancerDry', graph.bassEnhancerDryGain.gain, params.dryGain, 0.012);
+      update('_daliniraBassEnhancerDipFrequency', graph.bassEnhancerBodyDip.frequency, params.dipFrequency, 0.014);
+      update('_daliniraBassEnhancerDipGain', graph.bassEnhancerBodyDip.gain, params.dipGain, 0.014);
+      update('_daliniraBassEnhancerDipQ', graph.bassEnhancerBodyDip.Q, params.dipQ, 0.014);
+      update('_daliniraBassEnhancerOutput', graph.bassEnhancerOutputTrim.gain, params.outputGain, 0.012);
       const priorCurve = graph.bassEnhancerState && Number(graph.bassEnhancerState.curveAmount);
       if (force || !Number.isFinite(priorCurve) || Math.abs(priorCurve - params.curveAmount) > 0.5) {
         try {
@@ -2203,7 +2203,7 @@ QString WebAudioEffectsController::injectionScript() const {
           graph.bassEnhancerState.curveAmount = params.curveAmount;
         } catch (error) {
           root.lastRuntimeError = 'Bass Enhancer parameter apply failed: ' + String(error && error.message ? error.message : error);
-          console.error('[ArDali DSP] ' + root.lastRuntimeError);
+          console.error('[DaliNira DSP] ' + root.lastRuntimeError);
         }
       }
       graph.bassEnhancerEnabled = !!source.enabled;
@@ -2232,12 +2232,12 @@ QString WebAudioEffectsController::injectionScript() const {
         graph[key] = value;
         root.smoothParam(param, value, graph.ctx, rampSeconds);
       };
-      update('_ardaliCompressorThreshold', graph.compressorNode.threshold, enabled ? thresholdDb : 0, 0.010);
-      update('_ardaliCompressorRatio', graph.compressorNode.ratio, enabled ? ratio : 1, 0.010);
-      update('_ardaliCompressorAttack', graph.compressorNode.attack, enabled ? attackMs / 1000 : 0.003, 0.008);
-      update('_ardaliCompressorRelease', graph.compressorNode.release, enabled ? releaseMs / 1000 : 0.050, 0.012);
-      update('_ardaliCompressorKnee', graph.compressorNode.knee, enabled ? kneeDb : 30, 0.010);
-      update('_ardaliCompressorMakeup', graph.compressorMakeupGain.gain, enabled ? root.dbToGain(makeupDb) : 1, 0.012);
+      update('_daliniraCompressorThreshold', graph.compressorNode.threshold, enabled ? thresholdDb : 0, 0.010);
+      update('_daliniraCompressorRatio', graph.compressorNode.ratio, enabled ? ratio : 1, 0.010);
+      update('_daliniraCompressorAttack', graph.compressorNode.attack, enabled ? attackMs / 1000 : 0.003, 0.008);
+      update('_daliniraCompressorRelease', graph.compressorNode.release, enabled ? releaseMs / 1000 : 0.050, 0.012);
+      update('_daliniraCompressorKnee', graph.compressorNode.knee, enabled ? kneeDb : 30, 0.010);
+      update('_daliniraCompressorMakeup', graph.compressorMakeupGain.gain, enabled ? root.dbToGain(makeupDb) : 1, 0.012);
       graph.compressorEnabled = enabled;
       graph.compressorBypassed = !enabled;
     };
@@ -2261,13 +2261,13 @@ QString WebAudioEffectsController::injectionScript() const {
         graph[key] = value;
         root.smoothParam(param, value, graph.ctx, rampSeconds);
       };
-      update('_ardaliUserLimiterGain', graph.userLimiterInputGain.gain, enabled ? root.dbToGain(gainDb) : 1, 0.012);
-      update('_ardaliUserLimiterThreshold', graph.userLimiterNode.threshold, enabled ? ceilingDb : 0, 0.010);
-      update('_ardaliUserLimiterRatio', graph.userLimiterNode.ratio, enabled ? 20 : 1, 0.010);
-      update('_ardaliUserLimiterKnee', graph.userLimiterNode.knee, enabled ? 0 : 30, 0.010);
-      update('_ardaliUserLimiterAttack', graph.userLimiterNode.attack,
+      update('_daliniraUserLimiterGain', graph.userLimiterInputGain.gain, enabled ? root.dbToGain(gainDb) : 1, 0.012);
+      update('_daliniraUserLimiterThreshold', graph.userLimiterNode.threshold, enabled ? ceilingDb : 0, 0.010);
+      update('_daliniraUserLimiterRatio', graph.userLimiterNode.ratio, enabled ? 20 : 1, 0.010);
+      update('_daliniraUserLimiterKnee', graph.userLimiterNode.knee, enabled ? 0 : 30, 0.010);
+      update('_daliniraUserLimiterAttack', graph.userLimiterNode.attack,
              enabled ? Math.max(0.0005, lookaheadMs / 1000) : 0.003, 0.008);
-      update('_ardaliUserLimiterRelease', graph.userLimiterNode.release,
+      update('_daliniraUserLimiterRelease', graph.userLimiterNode.release,
              enabled ? Math.max(0.005, releaseMs / 1000) : 0.050, 0.014);
       graph.userLimiterEnabled = enabled;
       graph.userLimiterBypassed = !enabled;
@@ -2300,12 +2300,12 @@ QString WebAudioEffectsController::injectionScript() const {
       const delaySeconds = clamp((roomSizeMs / 1000) * 0.09, 0.01, 0.28, 0.09);
       const lowpassHz = enabled ? clamp(900 + hfRatio * 12000, 900, 18000, 9300) : 18000;
       const inputGain = enabled ? root.dbToGain(inputGainDb) : 1;
-      update('_ardaliReverbInputGain', graph.reverbInputGain.gain, inputGain, 0.012);
-      update('_ardaliReverbDryGain', graph.reverbDryGain.gain, dryGain, 0.012);
-      update('_ardaliReverbWetGain', graph.reverbWetGain.gain, wetGain, 0.012);
-      update('_ardaliReverbFeedback', graph.reverbFeedbackGain.gain, feedback, 0.014);
-      update('_ardaliReverbDelay', graph.reverbDelay.delayTime, delaySeconds, 0.014);
-      update('_ardaliReverbLowpass', graph.reverbLowpass.frequency, lowpassHz, 0.016);
+      update('_daliniraReverbInputGain', graph.reverbInputGain.gain, inputGain, 0.012);
+      update('_daliniraReverbDryGain', graph.reverbDryGain.gain, dryGain, 0.012);
+      update('_daliniraReverbWetGain', graph.reverbWetGain.gain, wetGain, 0.012);
+      update('_daliniraReverbFeedback', graph.reverbFeedbackGain.gain, feedback, 0.014);
+      update('_daliniraReverbDelay', graph.reverbDelay.delayTime, delaySeconds, 0.014);
+      update('_daliniraReverbLowpass', graph.reverbLowpass.frequency, lowpassHz, 0.016);
       graph.reverbEnabled = enabled;
       graph.reverbBypassed = !enabled;
     };
@@ -2352,27 +2352,27 @@ QString WebAudioEffectsController::injectionScript() const {
         graph[key] = target;
         root.smoothParam(param, target, ctx, rampSeconds);
       };
-      update('_ardaliPreampDb', graph.runtimeGain && graph.runtimeGain.gain, root.dbToGain(cfg.outputPreampDb), 0.090);
+      update('_daliniraPreampDb', graph.runtimeGain && graph.runtimeGain.gain, root.dbToGain(cfg.outputPreampDb), 0.090);
       const nodes = graph.eqBandNodes || [];
-      const priorBands = graph._ardaliBands || [];
+      const priorBands = graph._daliniraBands || [];
       const nextBands = [];
       for (let index = 0; index < nodes.length; index += 1) {
         const target = Number(cfg.bands[index]) || 0;
         nextBands.push(target);
         if (force || !same(priorBands[index], target)) root.smoothParam(nodes[index].gain, target, ctx, 0.115);
       }
-      graph._ardaliBands = nextBands;
+      graph._daliniraBands = nextBands;
       const bassDb = Number(cfg.bassDb) || 0;
-      update('_ardaliBassDb', graph.bass && graph.bass.gain, bassDb, 0.115);
-      update('_ardaliToneTrim', graph.toneTrim && graph.toneTrim.gain,
+      update('_daliniraBassDb', graph.bass && graph.bass.gain, bassDb, 0.115);
+      update('_daliniraToneTrim', graph.toneTrim && graph.toneTrim.gain,
              root.dbToGain(-Math.max(0, bassDb) * 0.333), 0.140);
-      update('_ardaliMidDb', graph.mid && graph.mid.gain, Number(cfg.midDb) || 0, 0.115);
-      update('_ardaliTrebleDb', graph.treble && graph.treble.gain, Number(cfg.trebleDb) || 0, 0.115);
-      update('_ardaliStereoWidth', graph.stereoSideWidth && graph.stereoSideWidth.gain,
+      update('_daliniraMidDb', graph.mid && graph.mid.gain, Number(cfg.midDb) || 0, 0.115);
+      update('_daliniraTrebleDb', graph.treble && graph.treble.gain, Number(cfg.trebleDb) || 0, 0.115);
+      update('_daliniraStereoWidth', graph.stereoSideWidth && graph.stereoSideWidth.gain,
              Math.max(0, Math.min(2, (Number(cfg.stereoExpanderPercent) || 100) / 100)), 0.115);
       const normalized = Math.max(-1, Math.min(1, (Number(cfg.balance) || 0) / 100));
-      update('_ardaliBalanceLeft', graph.balanceGainL && graph.balanceGainL.gain, normalized > 0 ? 1 - normalized : 1, 0.115);
-      update('_ardaliBalanceRight', graph.balanceGainR && graph.balanceGainR.gain, normalized < 0 ? 1 + normalized : 1, 0.115);
+      update('_daliniraBalanceLeft', graph.balanceGainL && graph.balanceGainL.gain, normalized > 0 ? 1 - normalized : 1, 0.115);
+      update('_daliniraBalanceRight', graph.balanceGainR && graph.balanceGainR.gain, normalized < 0 ? 1 + normalized : 1, 0.115);
       root.applyCompressorParams(graph, cfg, force);
       root.applyBassEnhancerParams(graph, cfg, force);
       root.applyReverbParams(graph, cfg, force);
@@ -2466,7 +2466,7 @@ QString WebAudioEffectsController::injectionScript() const {
         graph.bypass = true;
         try { graph.source.disconnect(); } catch (_) {}
         try { graph.source.connect(graph.ctx.destination); } catch (_) {}
-        console.error('[ArDali DSP] graph rebuild error: ' + String(err && err.message ? err.message : err));
+        console.error('[DaliNira DSP] graph rebuild error: ' + String(err && err.message ? err.message : err));
         return false;
       }
     };
@@ -2505,7 +2505,7 @@ QString WebAudioEffectsController::injectionScript() const {
             root.graphList.add(graph);
           } catch (error) {
             root.lastRuntimeError = 'Web Audio graph/node creation failed: ' + String(error && error.message ? error.message : error);
-            console.error('[ArDali DSP] ' + root.lastRuntimeError);
+            console.error('[DaliNira DSP] ' + root.lastRuntimeError);
             continue;
           }
         } else {
@@ -2656,7 +2656,7 @@ void WebAudioEffectsController::requestCompressorGainReduction() {
   const QString script = QStringLiteral(R"JS(
 (function() {
   try {
-    const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+    const root = window.__DALINIRA_WEB_DALI_OUTPUT__;
     if (!root || !root.graphList) return { available: false, reductionDb: 0, activeGraphs: 0 };
     let reductionDb = 0;
     let activeGraphs = 0;
@@ -2720,7 +2720,7 @@ void WebAudioEffectsController::requestLimiterReduction() {
   const QString script = QStringLiteral(R"JS(
 (function() {
   try {
-    const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+    const root = window.__DALINIRA_WEB_DALI_OUTPUT__;
     if (!root || !root.graphList) return { available: false, reductionDb: 0, activeGraphs: 0 };
     let reductionDb = 0;
     let activeGraphs = 0;
@@ -2770,10 +2770,10 @@ void WebAudioEffectsController::requestLimiterReduction() {
 void WebAudioEffectsController::applyToView(QWebEngineView *view) {
   if (!view || !view->page()) return;
   if (!isAudioEligibleView(view, view->url())) {
-    view->setProperty("ardali-audio-graph-active", false);
+    view->setProperty("dalinira-audio-graph-active", false);
     return;
   }
-  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+  if (qEnvironmentVariableIntValue("DALINIRA_FEATURE_DIAGNOSTICS") == 1) {
     qInfo().noquote() << "[AUDIO] effect parameter updated";
   }
   const QPointer<WebAudioEffectsController> guardedController(this);
@@ -2782,18 +2782,18 @@ void WebAudioEffectsController::applyToView(QWebEngineView *view) {
     if (!guardedController) return;
     if (guardedView && isAudioEligibleView(guardedView, guardedView->url())) {
       const QVariantMap map = result.toMap();
-      guardedView->setProperty("ardali-audio-graph-active",
+      guardedView->setProperty("dalinira-audio-graph-active",
                                map.value(QStringLiteral("ok")).toBool()
                                    && map.value(QStringLiteral("moduleLoaded")).toBool());
     } else if (guardedView) {
-      guardedView->setProperty("ardali-audio-graph-active", false);
+      guardedView->setProperty("dalinira-audio-graph-active", false);
     }
     guardedController->updateStatusFromResult(result);
-    if (qEnvironmentVariableIsSet("ARDALI_AUDIO_EFFECTS_TRACE")) {
+    if (qEnvironmentVariableIsSet("DALINIRA_AUDIO_EFFECTS_TRACE")) {
       const QVariantMap map = result.toMap();
       QStringList contextStates;
       for (const QVariant &state : map.value(QStringLiteral("contextStates")).toList()) contextStates.push_back(state.toString());
-      qInfo().noquote() << "[ArDali DSP] apply result enabled=" << map.value(QStringLiteral("enabled")).toBool()
+      qInfo().noquote() << "[DaliNira DSP] apply result enabled=" << map.value(QStringLiteral("enabled")).toBool()
                         << "attached=" << map.value(QStringLiteral("mediaCount")).toInt()
                         << "module=" << map.value(QStringLiteral("moduleLoaded")).toBool()
                         << "contexts=" << contextStates.join(QLatin1Char(','))
@@ -2814,7 +2814,7 @@ void WebAudioEffectsController::applyEqualizerBandToView(QWebEngineView *view, i
 
 void WebAudioEffectsController::installDocumentBootstrap(QWebEngineView *view, const QUrl &url) {
   if (!view || !view->page()) return;
-  constexpr auto kScriptName = "ardali-web-audio-document-bootstrap";
+  constexpr auto kScriptName = "dalinira-web-audio-document-bootstrap";
   QWebEngineScriptCollection &scripts = view->page()->scripts();
   for (const QWebEngineScript &existing : scripts.find(QString::fromLatin1(kScriptName))) scripts.remove(existing);
   if (!isAudioEligibleView(view, url)) return;
@@ -2832,7 +2832,7 @@ void WebAudioEffectsController::updateAudioPolicyForView(QWebEngineView *view, c
   const bool supported = isAudioEligibleView(view, url);
   if (!supported) {
     bootstrapViews_.remove(view);
-    view->setProperty("ardali-audio-graph-active", false);
+    view->setProperty("dalinira-audio-graph-active", false);
   }
   installDocumentBootstrap(view, url);
 }
@@ -2846,7 +2846,7 @@ void WebAudioEffectsController::bootstrapView(QWebEngineView *view) {
     status_.engineAvailable = false;
     status_.enabled = enabled_;
     status_.detail = QStringLiteral("DALI Web Audio modülü çalışma anında bulunamadı.");
-    qWarning().noquote() << "[ArDali DSP]" << status_.detail;
+    qWarning().noquote() << "[DaliNira DSP]" << status_.detail;
     emit statusChanged(status_);
     return;
   }
@@ -2858,11 +2858,11 @@ void WebAudioEffectsController::bootstrapView(QWebEngineView *view) {
     if (guardedView) guardedController->bootstrapViews_.remove(guardedView);
     if (guardedView && isAudioEligibleView(guardedView, guardedView->url())) {
       const QVariantMap map = result.toMap();
-      guardedView->setProperty("ardali-audio-graph-active",
+      guardedView->setProperty("dalinira-audio-graph-active",
                                map.value(QStringLiteral("ok")).toBool()
                                    && map.value(QStringLiteral("moduleLoaded")).toBool());
     } else if (guardedView) {
-      guardedView->setProperty("ardali-audio-graph-active", false);
+      guardedView->setProperty("dalinira-audio-graph-active", false);
     }
     guardedController->updateStatusFromResult(result);
   });
@@ -2881,7 +2881,7 @@ void WebAudioEffectsController::updateStatusFromResult(const QVariant &result) {
   const QString error = map.value(QStringLiteral("error")).toString();
   if (!error.isEmpty()) {
     next.detail = QStringLiteral("DALI Web Audio hatası: %1").arg(error);
-    qWarning().noquote() << "[ArDali DSP]" << next.detail;
+    qWarning().noquote() << "[DaliNira DSP]" << next.detail;
   }
   else if (!enabled_) next.detail = QStringLiteral("DALI Web Audio zinciri bypass edildi; ayarlar korunuyor.");
   else if (!next.engineAvailable) next.detail = QStringLiteral("DALI Web Audio grafiği hazırlanamadı.");

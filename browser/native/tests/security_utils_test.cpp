@@ -18,8 +18,8 @@ QUrl sanitized(const char *url) {
 int main(int argc, char **argv) {
   QCoreApplication app(argc, argv);
 
-  assert(sanitized("https://example.com/page?q=ardali&page=2")
-         == QUrl(QStringLiteral("https://example.com/page?q=ardali&page=2")));
+  assert(sanitized("https://example.com/page?q=dalinira&page=2")
+         == QUrl(QStringLiteral("https://example.com/page?q=dalinira&page=2")));
   assert(sanitized("https://example.com/callback?code=synthetic-code")
          == QUrl(QStringLiteral("https://example.com/callback")));
   assert(sanitized("https://example.com/?access_token=synthetic-token&q=test")
@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
   assert(BrowserSecurity::resolveTrustedExecutable(QStringLiteral("ffmpeg"), {trustedPath})
          == QFileInfo(trustedPath).canonicalFilePath());
 
-  const QString writableProgram = QStringLiteral("ardali-writable-helper");
+  const QString writableProgram = QStringLiteral("dalinira-writable-helper");
   const QString writablePath = QDir(directory.path()).filePath(writableProgram);
   QFile writable(writablePath);
   assert(writable.open(QIODevice::WriteOnly));
@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
   assert(QDir().mkpath(insecureDirectoryPath));
   assert(QFile::setPermissions(insecureDirectoryPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner
       | QFileDevice::ExeOwner | QFileDevice::WriteGroup | QFileDevice::WriteOther));
-  const QString insecureDirectoryProgram = QStringLiteral("ardali-insecure-directory-helper");
+  const QString insecureDirectoryProgram = QStringLiteral("dalinira-insecure-directory-helper");
   const QString insecureDirectoryExecutable = QDir(insecureDirectoryPath).filePath(insecureDirectoryProgram);
   QFile insecureDirectoryFile(insecureDirectoryExecutable);
   assert(insecureDirectoryFile.open(QIODevice::WriteOnly));
@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
 
   const QByteArray originalPath = qgetenv("PATH");
   qputenv("PATH", directory.path().toUtf8());
-  assert(BrowserSecurity::resolveTrustedExecutable(QStringLiteral("ardali-nonexistent-helper")).isEmpty());
+  assert(BrowserSecurity::resolveTrustedExecutable(QStringLiteral("dalinira-nonexistent-helper")).isEmpty());
   qputenv("PATH", originalPath);
 
   std::cout << "URL persistence and executable provenance invariants: ok\n";

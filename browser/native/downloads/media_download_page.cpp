@@ -1005,7 +1005,9 @@ void MediaDownloadPage::analyzeInput() {
     return;
   }
   statusLabel_->setText(QStringLiteral("Analiz başlatılıyor…"));
-  if (!service_->analyze(url) && service_->analysisRunning())
+  const bool adultProtectionEnabled = profileService_
+      && profileService_->isAdultContentProtectionEnabled();
+  if (!service_->analyze(url, adultProtectionEnabled) && service_->analysisRunning())
     statusLabel_->setText(QStringLiteral("Bir analiz zaten devam ediyor."));
 }
 
@@ -1199,6 +1201,11 @@ void MediaDownloadPage::startSelectedDownload() {
   }
   MediaDownloadRequest request;
   request.url = analysis_.url;
+  request.adultProtectionContextUrl = analysis_.adultProtectionContextUrl;
+  request.adultProtectionUrls = analysis_.adultProtectionUrls;
+  request.adultProtectionUrlsComplete = analysis_.adultProtectionUrlsComplete;
+  request.adultContentProtectionEnabled = profileService_
+      && profileService_->isAdultContentProtectionEnabled();
   request.title = analysis_.title;
   request.source = analysis_.source;
   request.thumbnailUrl = analysis_.thumbnailUrl;
@@ -1222,8 +1229,14 @@ void MediaDownloadPage::startSelectedDownload() {
   else if (mode == QLatin1String("video")) request.kind = MediaDownloadKind::Video;
   else if (mode == QLatin1String("original")) request.kind = MediaDownloadKind::AudioOriginal;
   else { request.kind = MediaDownloadKind::AudioConvert; request.audioFormat = mode; }
-  const QUuid id = service_->enqueue(request);
-  if (id.isNull()) { statusLabel_->setText(QStringLiteral("İndirme başlatılamadı. Hedef klasörü ve gerekli bileşenleri kontrol edin.")); return; }
+  QString error;
+  const QUuid id = service_->enqueue(request, &error);
+  if (id.isNull()) {
+    statusLabel_->setText(error.isEmpty()
+        ? QStringLiteral("İndirme başlatılamadı. Hedef klasörü ve gerekli bileşenleri kontrol edin.")
+        : error);
+    return;
+  }
   statusLabel_->setText(QStringLiteral("İndirme kuyruğa eklendi."));
 }
 
@@ -1326,7 +1339,13 @@ QWidget *MediaDownloadPage::createJobCard(const MediaDownloadJob &job, QWidget *
   } else {
     auto *retry = actionButton(BrowserIcon::Reset, QStringLiteral("Tekrar Dene"), QStringLiteral("Bu indirmeyi yeniden başlat"), jobCard, "secondary");
     auto *remove = actionButton(BrowserIcon::Trash, QStringLiteral("Listeden Kaldır"), QStringLiteral("Bu kaydı indirme listesinden kaldır"), jobCard, "danger");
-    connect(retry, &QPushButton::clicked, this, [this, id = job.id] { service_->retry(id); });
+    connect(retry, &QPushButton::clicked, this, [this, id = job.id] {
+      QString error;
+      const bool adultProtectionEnabled = profileService_
+          && profileService_->isAdultContentProtectionEnabled();
+      if (service_->retry(id, adultProtectionEnabled, &error).isNull() && !error.isEmpty())
+        statusLabel_->setText(error);
+    });
     connect(remove, &QPushButton::clicked, this, [this, id = job.id] { service_->remove(id); });
     actions->addWidget(retry);
     actions->addWidget(remove);
@@ -1657,7 +1676,7 @@ void MediaDownloadPage::openWithSystemApplication(const QString &path) {
   }
 
 #if defined(Q_OS_LINUX)
-  // Always ask here. The user may have associated media files with ArDali,
+  // Always ask here. The user may have associated media files with DaliNira,
   // in which case QDesktopServices would route straight back into this
   // browser instead of opening an external player.
   const QString portalClient = QStringLiteral("/usr/bin/gdbus");
@@ -1711,7 +1730,7 @@ QString MediaDownloadPage::formatBytes(qint64 bytes) {
 void MediaDownloadPage::exportHistory(bool csv) {
   const QString extension = csv ? QStringLiteral("csv") : QStringLiteral("json");
   const QString selected = QFileDialog::getSaveFileName(this, QStringLiteral("İndirme geçmişini dışa aktar"),
-      QDir::home().filePath(QStringLiteral("ardali-media-downloads.%1").arg(extension)),
+      QDir::home().filePath(QStringLiteral("dalinira-media-downloads.%1").arg(extension)),
       csv ? QStringLiteral("CSV (*.csv)") : QStringLiteral("JSON (*.json)"));
   if (selected.isEmpty()) return;
   QByteArray bytes;

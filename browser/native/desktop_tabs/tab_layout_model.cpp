@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 TabLayoutModel::TabLayoutModel(LayoutMetrics metrics)
     : metrics_(metrics) {}
@@ -335,4 +335,4 @@ QRect TabLayoutModel::computeNewTabButtonRect(int visualTabsRight, const QSize &
   return QRect(x, y, btnW, btnH);
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

@@ -1,8 +1,8 @@
 #include "settings_page.h"
 #include "settings_ui_helpers.h"
 #include "browser_profile_service.h"
-#include "ardali_blocker_service.h"
-#include "ardali_blocker_settings.h"
+#include "dalinira_blocker_service.h"
+#include "dalinira_blocker_settings.h"
 #include "glow_toggle_switch.h"
 #include "i18n/i18n.h"
 
@@ -32,7 +32,7 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
-using namespace ardali::settings_ui;
+using namespace dalinira::settings_ui;
 
 class DynamicStackedWidget final : public QStackedWidget {
  public:
@@ -103,7 +103,7 @@ class PrivacyDetailSubpage final : public QWidget {
     connect(helpBtn_, &QPushButton::clicked, this, [this] {
       QMessageBox::information(this, QStringLiteral("Üçüncü Taraf Çerezleri"),
                                QStringLiteral("Üçüncü taraf çerezleri, ziyaret ettiğiniz siteden farklı bir web sitesine ait çerezlerdir.\n\n"
-                                              "ArDali Kalkanlar bu tür takip çerezlerini varsayılan olarak engeller. "
+                                              "DaliNira Kalkanlar bu tür takip çerezlerini varsayılan olarak engeller. "
                                               "Buraya izin verilen olarak eklediğiniz siteler üçüncü taraf çerezlerini kullanabilir."));
     });
     headerLayout->addWidget(helpBtn_, 0, Qt::AlignVCenter);
@@ -458,7 +458,7 @@ class PrivacyDetailSubpage final : public QWidget {
     noticeIcon->setPixmap(BrowserIcons::icon(BrowserIcon::Privacy).pixmap(18, 18));
     noticeIcon->setFixedSize(18, 18);
     noticeLayout->addWidget(noticeIcon, 0, Qt::AlignVCenter);
-    auto *noticeLabel = new QLabel(QStringLiteral("Bazı çerez ayarları ArDali Kalkanlar tarafından kontrol edilir. Bunları ardali://blocker sayfasında görebilirsiniz."), noticeBox);
+    auto *noticeLabel = new QLabel(QStringLiteral("Bazı çerez ayarları DaliNira Kalkanlar tarafından kontrol edilir. Bunları dalinira://blocker sayfasında görebilirsiniz."), noticeBox);
     noticeLabel->setStyleSheet(QStringLiteral("color: #9ac2ef; font-size: 13px; background: transparent; border: none;"));
     noticeLabel->setWordWrap(true);
     noticeLayout->addWidget(noticeLabel, 1, Qt::AlignVCenter);
@@ -648,7 +648,7 @@ class PrivacyDetailSubpage final : public QWidget {
       introLabel_->setText(QStringLiteral("PDF dosyalarının tarayıcıda açılma veya indirilme davranışını belirleyin."));
       allowIconLabel_->setPixmap(BrowserIcons::icon(BrowserIcon::Pdf).pixmap(18, 18));
       denyIconLabel_->setPixmap(BrowserIcons::icon(BrowserIcon::Download).pixmap(18, 18));
-      allowTitleLabel_->setText(QStringLiteral("PDF'leri ArDali'de aç"));
+      allowTitleLabel_->setText(QStringLiteral("PDF'leri DaliNira'de aç"));
       denyTitleLabel_->setText(QStringLiteral("PDF'leri indir"));
       denySubLabel_->setText(QStringLiteral("PDF belgeleri otomatik olarak İndirilenler klasörüne kaydedilir"));
       hasDeviceSelector_ = false;
@@ -1307,7 +1307,7 @@ QWidget *SettingsPage::createPrivacySection() {
   };
   const auto getPdfSub = [this] {
     return profileService_->openPdfInBrowser()
-        ? QStringLiteral("PDF'leri ArDali'de aç")
+        ? QStringLiteral("PDF'leri DaliNira'de aç")
         : QStringLiteral("PDF'leri indir");
   };
   const auto getProtectedContentSub = [this] {
@@ -1426,7 +1426,7 @@ QWidget *SettingsPage::createPrivacySection() {
   addRow(autoRevokeCard, settingRow(
       autoRevokeCard,
       QStringLiteral("Kullanılmayan sitelerin izinlerini otomatik olarak kaldır"),
-      QStringLiteral("Verilerinizin korunması için ArDali'nin, yakın zamanda ziyaret etmediğiniz sitelerin izinlerini kaldırmasına izin verin."),
+      QStringLiteral("Verilerinizin korunması için DaliNira'nin, yakın zamanda ziyaret etmediğiniz sitelerin izinlerini kaldırmasına izin verin."),
       autoRevokeSwitch));
   section.layout->addWidget(autoRevokeCard);
   connect(autoRevokeSwitch, &QCheckBox::toggled, this, [this](bool checked) {
@@ -1437,6 +1437,16 @@ QWidget *SettingsPage::createPrivacySection() {
   // 4. TARAMA VERİLERİ VE İZLEME KORUMASI KARTI
   // =========================================================================
   auto *privacyCard = makeCard(section.page, QStringLiteral("TARAMA VERİLERİ VE İZLEME KORUMASI"));
+  auto *adultSwitch = new GlowToggleSwitch(privacyCard);
+  adultSwitch->setChecked(profileService_->isAdultContentProtectionEnabled());
+  adultSwitch->setAccessibleName(QStringLiteral("Yetişkin İçerik Koruması"));
+  addRow(privacyCard, settingRow(
+      privacyCard,
+      QStringLiteral("Yetişkin İçerik Koruması"),
+      QStringLiteral("Bilinen yetişkin içerik sitelerinin yüklenmesini engeller."),
+      adultSwitch,
+      BrowserIcon::Privacy,
+      true));
   auto *strip = new QCheckBox(privacyCard); strip->setAccessibleName(QStringLiteral("İzleme parametrelerini kaldır")); strip->setChecked(profileService_->stripsTrackingParameters());
   addRow(privacyCard, settingRow(privacyCard, QStringLiteral("İzleme parametrelerini kaldır"), QStringLiteral("Bilinen takip parametrelerini HTTP/HTTPS adreslerinden yönlendirme öncesinde temizler."), strip, BrowserIcon::Privacy, true));
   auto *cache = new QPushButton(QStringLiteral("Temizle"), privacyCard); cache->setProperty("danger", true); cache->setAccessibleName(QStringLiteral("HTTP önbelleğini temizle"));
@@ -1445,6 +1455,7 @@ QWidget *SettingsPage::createPrivacySection() {
   addRow(privacyCard, settingRow(privacyCard, QStringLiteral("Çerezler ve site verileri"), QStringLiteral("Bu profile ait tüm çerezleri kullanıcı onayıyla siler."), cookies));
   section.layout->addWidget(privacyCard);
 
+  connect(adultSwitch, &QCheckBox::toggled, this, [this](bool enabled) { profileService_->setAdultContentProtectionEnabled(enabled); });
   connect(strip, &QCheckBox::toggled, this, [this](bool enabled) { profileService_->setStripsTrackingParameters(enabled); });
   connect(cache, &QPushButton::clicked, this, [this] { profileService_->clearHttpCache(); QMessageBox::information(this, QStringLiteral("Önbellek"), QStringLiteral("HTTP önbelleği temizleme isteği gönderildi.")); });
   connect(cookies, &QPushButton::clicked, this, [this] { if (QMessageBox::question(this, QStringLiteral("Çerezleri temizle"), QStringLiteral("Bu profilin tüm çerezleri silinsin mi?")) == QMessageBox::Yes) profileService_->clearCookies(); });
@@ -1569,11 +1580,11 @@ QWidget *SettingsPage::createPrivacySection() {
 }
 
 QWidget *SettingsPage::createBlockerSection() {
-  Section section = makeSection(QStringLiteral("ArDali Blocker"), QStringLiteral("Reklamları, izleyicileri ve istenmeyen içerikleri yönetin."));
+  Section section = makeSection(QStringLiteral("DaliNira Blocker"), QStringLiteral("Reklamları, izleyicileri ve istenmeyen içerikleri yönetin."));
   auto *blockerCard = makeCard(section.page, QStringLiteral("REKLAM VE İZLEYİCİ KORUMASI"));
 
-  auto *openBtn = new QPushButton(QStringLiteral("ArDali Blocker Ayarlarını Aç"), blockerCard);
-  openBtn->setAccessibleName(QStringLiteral("ArDali Blocker sekmesini aç"));
+  auto *openBtn = new QPushButton(QStringLiteral("DaliNira Blocker Ayarlarını Aç"), blockerCard);
+  openBtn->setAccessibleName(QStringLiteral("DaliNira Blocker sekmesini aç"));
   addRow(blockerCard, settingRow(blockerCard, QStringLiteral("Filtreleme ve Kural Yönetimi"),
                                  QStringLiteral("8 sekmeli tam koruma paneli: Mod ayarları, ruleset kataloğu, özel filtreler ve canlı istek günlüğü."),
                                  openBtn, BrowserIcon::Privacy, true));
@@ -1595,7 +1606,7 @@ QWidget *SettingsPage::createBlockerSection() {
   section.layout->addStretch();
 
   connect(openBtn, &QPushButton::clicked, this, [this] {
-    emit navigateRequested(QUrl(QStringLiteral("ardali://blocker")));
+    emit navigateRequested(QUrl(QStringLiteral("dalinira://blocker")));
   });
 
   return section.page;

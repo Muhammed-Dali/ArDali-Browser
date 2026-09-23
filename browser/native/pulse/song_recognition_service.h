@@ -45,7 +45,7 @@ struct SongResult {
         t.compare(QStringLiteral("New Tab"), Qt::CaseInsensitive) == 0 ||
         t.compare(QStringLiteral("YouTube"), Qt::CaseInsensitive) == 0 ||
         t.compare(QStringLiteral("Google"), Qt::CaseInsensitive) == 0 ||
-        t.compare(QStringLiteral("ArDaliBrowser"), Qt::CaseInsensitive) == 0 ||
+        t.compare(QStringLiteral("DaliNiraBrowser"), Qt::CaseInsensitive) == 0 ||
         t.compare(QStringLiteral("Bilinmeyen Parça"), Qt::CaseInsensitive) == 0) {
       return false;
     }

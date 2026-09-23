@@ -7,12 +7,12 @@
 #include <iostream>
 
 #include "audio/web_audio_effects_controller.h"
-#include "blocker/ardali_blocker_service.h"
-#include "blocker/ardali_blocker_request_interceptor.h"
+#include "blocker/dalinira_blocker_service.h"
+#include "blocker/dalinira_blocker_request_interceptor.h"
 #include "pulse/song_recognition_service.h"
 #include "pulse/song_finder_settings.h"
 #include "downloads/media_download_service.h"
-#include "blocker/ardali_blocker_shield_button.h"
+#include "blocker/dalinira_blocker_shield_button.h"
 
 int main(int argc, char *argv[]) {
   qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -34,20 +34,20 @@ int main(int argc, char *argv[]) {
 
     // Verify document bootstrap was installed into page scripts
     QWebEngineScriptCollection &scripts = page->scripts();
-    const auto installed = scripts.find(QStringLiteral("ardali-web-audio-document-bootstrap"));
+    const auto installed = scripts.find(QStringLiteral("dalinira-web-audio-document-bootstrap"));
     assert(!installed.isEmpty());
-    assert(installed.first().name() == QStringLiteral("ardali-web-audio-document-bootstrap"));
+    assert(installed.first().name() == QStringLiteral("dalinira-web-audio-document-bootstrap"));
     assert(installed.first().sourceCode().contains(QStringLiteral("hostname === domain")));
 
     auto *normalView = new QWebEngineView();
     auto *normalPage = new QWebEnginePage(QWebEngineProfile::defaultProfile(), normalView);
     normalView->setPage(normalPage);
     audioController->registerWebView(normalView, QUrl(QStringLiteral("https://amazon.com/")));
-    assert(normalPage->scripts().find(QStringLiteral("ardali-web-audio-document-bootstrap")).isEmpty());
+    assert(normalPage->scripts().find(QStringLiteral("dalinira-web-audio-document-bootstrap")).isEmpty());
     emit normalView->urlChanged(QUrl(QStringLiteral("https://music.youtube.com/")));
-    assert(!normalPage->scripts().find(QStringLiteral("ardali-web-audio-document-bootstrap")).isEmpty());
+    assert(!normalPage->scripts().find(QStringLiteral("dalinira-web-audio-document-bootstrap")).isEmpty());
     emit normalView->urlChanged(QUrl(QStringLiteral("https://amazon.com/")));
-    assert(normalPage->scripts().find(QStringLiteral("ardali-web-audio-document-bootstrap")).isEmpty());
+    assert(normalPage->scripts().find(QStringLiteral("dalinira-web-audio-document-bootstrap")).isEmpty());
 
     // Verify parameter adjustments
     audioController->setEnabled(true);
@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
     QTemporaryDir tempDir;
     assert(tempDir.isValid());
 
-    auto *blockerService = new ArDaliBlockerService(tempDir.path(), &app);
+    auto *blockerService = new DaliNiraBlockerService(tempDir.path(), &app);
     const quint64 testTabId = 0x12345678;
     const QUrl testUrl("https://example.com/news");
 
@@ -79,10 +79,10 @@ int main(int argc, char *argv[]) {
     const QUrl adUrl("https://doubleclick.net/ad");
     RequestDecision decision = blockerService->evaluateRequest(adUrl, 0, testUrl, testTabId, QStringLiteral("get"));
     std::cout << "Blocker decision action: " << static_cast<int>(decision.action) << std::endl;
-    assert(decision.action == ArDaliBlockerAction::Block ||
-           decision.action == ArDaliBlockerAction::Allow ||
-           decision.action == ArDaliBlockerAction::Redirect ||
-           decision.action == ArDaliBlockerAction::ModifyHeaders);
+    assert(decision.action == DaliNiraBlockerAction::Block ||
+           decision.action == DaliNiraBlockerAction::Allow ||
+           decision.action == DaliNiraBlockerAction::Redirect ||
+           decision.action == DaliNiraBlockerAction::ModifyHeaders);
 
     const auto stats = blockerService->statsForTab(testTabId);
     assert(stats.allowedRequests >= 0);
@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
     assert(MediaDownloadService::isSupportedMediaUrl(QUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")));
     assert(MediaDownloadService::isSupportedMediaUrl(QUrl("https://youtu.be/dQw4w9WgXcQ")));
     assert(MediaDownloadService::isSupportedMediaUrl(QUrl("https://vimeo.com/12345678")));
-    assert(!MediaDownloadService::isSupportedMediaUrl(QUrl("ardali://newtab/")));
+    assert(!MediaDownloadService::isSupportedMediaUrl(QUrl("dalinira://newtab/")));
     assert(!MediaDownloadService::isSupportedMediaUrl(QUrl("about:blank")));
     std::cout << "PASS: Media Detection Service URL Support" << std::endl;
   }
@@ -128,8 +128,8 @@ int main(int argc, char *argv[]) {
   {
     std::cout << "Testing Ad Blocker Per-Tab State & Lifecycle..." << std::endl;
     QTemporaryDir tempDir;
-    auto *blockerService = new ArDaliBlockerService(tempDir.path(), &app);
-    auto *shieldButton = new ArDaliBlockerShieldButton(blockerService);
+    auto *blockerService = new DaliNiraBlockerService(tempDir.path(), &app);
+    auto *shieldButton = new DaliNiraBlockerShieldButton(blockerService);
 
     const quint64 tabYouTube = 1001;
     const quint64 tabFacebook = 1002;
@@ -137,7 +137,7 @@ int main(int argc, char *argv[]) {
 
     blockerService->registerTab(tabYouTube, QUrl("https://www.youtube.com/watch?v=123"));
     blockerService->registerTab(tabFacebook, QUrl("https://www.facebook.com/feed"));
-    blockerService->registerTab(tabNewTab, QUrl("ardali://newtab/"));
+    blockerService->registerTab(tabNewTab, QUrl("dalinira://newtab/"));
 
     // Simulate blocked requests on YouTube
     for (int i = 0; i < 7; ++i) {
@@ -160,7 +160,7 @@ int main(int argc, char *argv[]) {
     assert(shieldButton->blockedCount() == 7);
     assert(!shieldButton->isInternalPage());
 
-    // Switch to Tab B (ardali://newtab) -> count must disappear, internal page inactive, but button ALWAYS clickable!
+    // Switch to Tab B (dalinira://newtab) -> count must disappear, internal page inactive, but button ALWAYS clickable!
     shieldButton->setInternalPage(true);
     shieldButton->setActiveHost(QString());
     shieldButton->setBlockedCount(0);
@@ -183,7 +183,7 @@ int main(int argc, char *argv[]) {
 
     // Detach YouTube tab into another window -> state preserved
     blockerService->registerTab(tabYouTube, QUrl("https://www.youtube.com/watch?v=123"));
-    auto *detachedShieldButton = new ArDaliBlockerShieldButton(blockerService);
+    auto *detachedShieldButton = new DaliNiraBlockerShieldButton(blockerService);
     detachedShieldButton->setInternalPage(false);
     detachedShieldButton->setActiveHost("youtube.com");
     detachedShieldButton->setBlockedCount(blockerService->statsForTab(tabYouTube).blockedRequests);
@@ -195,9 +195,9 @@ int main(int argc, char *argv[]) {
 
     // Verify internal requests never get blocked count incremented
     const auto internalDecision = blockerService->evaluateRequest(
-        QUrl("ardali://newtab/bundle.js"), 2, QUrl("ardali://newtab/"), tabNewTab);
-    assert(internalDecision.action == ArDaliBlockerAction::Allow);
-    assert(internalDecision.rulesetId == QStringLiteral("ardali-internal"));
+        QUrl("dalinira://newtab/bundle.js"), 2, QUrl("dalinira://newtab/"), tabNewTab);
+    assert(internalDecision.action == DaliNiraBlockerAction::Allow);
+    assert(internalDecision.rulesetId == QStringLiteral("dalinira-internal"));
     assert(blockerService->statsForTab(tabNewTab).blockedRequests == 0);
 
     delete detachedShieldButton;
@@ -214,10 +214,10 @@ int main(int argc, char *argv[]) {
       QString baseUrl;
       if (lower.contains(QLatin1String("duckduckgo")) || lower.contains(QLatin1String("duck"))) {
         baseUrl = QStringLiteral("https://duckduckgo.com/?q=");
-      } else if (lower.contains(QLatin1String("brave"))) {
-        baseUrl = QStringLiteral("https://search.brave.com/search?q=");
-      } else if (lower.contains(QLatin1String("bing"))) {
-        baseUrl = QStringLiteral("https://www.bing.com/search?q=");
+      } else if (lower.contains(QLatin1String("startpage"))) {
+        baseUrl = QStringLiteral("https://www.startpage.com/sp/search?query=");
+      } else if (lower.contains(QLatin1String("mojeek"))) {
+        baseUrl = QStringLiteral("https://www.mojeek.com/search?q=");
       } else {
         baseUrl = QStringLiteral("https://www.google.com/search?q=");
       }
@@ -226,9 +226,11 @@ int main(int argc, char *argv[]) {
 
     assert(searchUrl("Google", "hello world").toEncoded() == "https://www.google.com/search?q=hello%20world");
     assert(searchUrl("DuckDuckGo", "privacy").toEncoded() == "https://duckduckgo.com/?q=privacy");
-    assert(searchUrl("Brave Search", "crypto").toEncoded() == "https://search.brave.com/search?q=crypto");
-    assert(searchUrl("Bing", "microsoft").toEncoded() == "https://www.bing.com/search?q=microsoft");
-    std::cout << "PASS: Search Engine URL Generation Parity" << std::endl;
+    assert(searchUrl("Startpage", "privacy").toEncoded() == "https://www.startpage.com/sp/search?query=privacy");
+    assert(searchUrl("Mojeek", "independent").toEncoded() == "https://www.mojeek.com/search?q=independent");
+    assert(searchUrl("Brave Search", "crypto").toEncoded() == "https://www.google.com/search?q=crypto");
+    assert(searchUrl("Bing", "microsoft").toEncoded() == "https://www.google.com/search?q=microsoft");
+    std::cout << "PASS: Search Engine URL Generation Parity (Google, DuckDuckGo, Startpage, Mojeek + Fallback)" << std::endl;
   }
 
   // 7. Test Bookmark Display Name Resolution (No truncation of normal platform names)

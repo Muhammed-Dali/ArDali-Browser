@@ -55,7 +55,7 @@ bool TranslationSecretStore::isVaultLocked() const {
 }
 
 QString TranslationSecretStore::translationOrigin() {
-  return QStringLiteral("https://translation.ardali.internal");
+  return QStringLiteral("https://translation.dalinira.internal");
 }
 
 QString TranslationSecretStore::usernameForProvider(const QString &providerId) {

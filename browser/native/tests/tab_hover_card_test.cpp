@@ -35,10 +35,10 @@ static void testWindowFlagsAndFlickerAttributes() {
 
 static void testDomainExtraction() {
   std::cout << "[TEST] Running testDomainExtraction...\n";
-  assert(TabHoverCard::extractDomain(QUrl(QStringLiteral("ardali://newtab"))) == QStringLiteral("ArDaliBrowser"));
-  assert(TabHoverCard::extractDomain(QUrl(QStringLiteral("ardali://settings"))) == QStringLiteral("Ayarlar"));
-  assert(TabHoverCard::extractDomain(QUrl(QStringLiteral("ardali://passwords"))) == QStringLiteral("Şifre Yöneticisi"));
-  assert(TabHoverCard::extractDomain(QUrl(QStringLiteral("ardali://downloads"))) == QStringLiteral("İndirmeler"));
+  assert(TabHoverCard::extractDomain(QUrl(QStringLiteral("dalinira://newtab"))) == QStringLiteral("DaliNiraBrowser"));
+  assert(TabHoverCard::extractDomain(QUrl(QStringLiteral("dalinira://settings"))) == QStringLiteral("Ayarlar"));
+  assert(TabHoverCard::extractDomain(QUrl(QStringLiteral("dalinira://passwords"))) == QStringLiteral("Şifre Yöneticisi"));
+  assert(TabHoverCard::extractDomain(QUrl(QStringLiteral("dalinira://downloads"))) == QStringLiteral("İndirmeler"));
   assert(TabHoverCard::extractDomain(QUrl(QStringLiteral("https://www.google.com/search?q=test"))) == QStringLiteral("google.com"));
   assert(TabHoverCard::extractDomain(QUrl(QStringLiteral("https://github.com/openai"))) == QStringLiteral("github.com"));
   std::cout << "  -> PASS: Domain extraction verified.\n";
@@ -50,7 +50,7 @@ static void testLifecycleStateAuthoritativeSource() {
 
   // 1. Internal Tab
   QRect tabRect(100, 100, 160, 36);
-  card.showForTab(QStringLiteral("Ayarlar"), QUrl(QStringLiteral("ardali://settings")), QIcon(),
+  card.showForTab(QStringLiteral("Ayarlar"), QUrl(QStringLiteral("dalinira://settings")), QIcon(),
                   nullptr, QVector<QPointer<QWebEngineView>>{}, tabRect, nullptr,
                   []() { return QWebEnginePage::LifecycleState::Active; },
                   /*isInternal=*/true);

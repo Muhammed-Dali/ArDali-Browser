@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ArDaliBrowser VERSION 7.2.0 LANGUAGES CXX)
+project(DaliNiraBrowser VERSION 7.2.0 LANGUAGES CXX)
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Default install prefix" FORCE)
@@ -13,21 +13,21 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-option(ARDALI_ENABLE_ASAN "Enable AddressSanitizer for developer builds" OFF)
-option(ARDALI_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer for developer builds" OFF)
-if(ARDALI_ENABLE_ASAN OR ARDALI_ENABLE_UBSAN)
+option(DALINIRA_ENABLE_ASAN "Enable AddressSanitizer for developer builds" OFF)
+option(DALINIRA_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer for developer builds" OFF)
+if(DALINIRA_ENABLE_ASAN OR DALINIRA_ENABLE_UBSAN)
   if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    message(FATAL_ERROR "ArDali sanitizer options currently support GCC and Clang only")
+    message(FATAL_ERROR "DaliNira sanitizer options currently support GCC and Clang only")
   endif()
-  set(ARDALI_SANITIZER_FLAGS)
-  if(ARDALI_ENABLE_ASAN)
-    list(APPEND ARDALI_SANITIZER_FLAGS -fsanitize=address)
+  set(DALINIRA_SANITIZER_FLAGS)
+  if(DALINIRA_ENABLE_ASAN)
+    list(APPEND DALINIRA_SANITIZER_FLAGS -fsanitize=address)
   endif()
-  if(ARDALI_ENABLE_UBSAN)
-    list(APPEND ARDALI_SANITIZER_FLAGS -fsanitize=undefined)
+  if(DALINIRA_ENABLE_UBSAN)
+    list(APPEND DALINIRA_SANITIZER_FLAGS -fsanitize=undefined)
   endif()
-  add_compile_options(${ARDALI_SANITIZER_FLAGS} -fno-omit-frame-pointer)
-  add_link_options(${ARDALI_SANITIZER_FLAGS})
+  add_compile_options(${DALINIRA_SANITIZER_FLAGS} -fno-omit-frame-pointer)
+  add_link_options(${DALINIRA_SANITIZER_FLAGS})
 endif()
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS
@@ -46,7 +46,7 @@ pkg_check_modules(PSL REQUIRED IMPORTED_TARGET libpsl)
 link_libraries(PkgConfig::PSL)
 pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
 if(LIBSECRET_FOUND)
-  add_compile_definitions(ARDALI_HAS_LIBSECRET=1)
+  add_compile_definitions(DALINIRA_HAS_LIBSECRET=1)
   link_libraries(PkgConfig::LIBSECRET)
 endif()
 find_program(NODE_EXECUTABLE node REQUIRED)
@@ -105,7 +105,7 @@ add_custom_command(
     ${CMAKE_CURRENT_SOURCE_DIR}/dali-lang/src/compiler-web-audio.js
   VERBATIM
 )
-add_custom_target(ardali-web-output-dali DEPENDS ${DALI_WEB_OUTPUT_MODULE} ${DALI_WEB_EQ32_MODULE} ${DALI_WEB_COMPRESSOR_MODULE} ${DALI_WEB_LIMITER_MODULE} ${DALI_WEB_BASS_ENHANCER_MODULE} ${DALI_WEB_AUTO_GAIN_MODULE})
+add_custom_target(dalinira-web-output-dali DEPENDS ${DALI_WEB_OUTPUT_MODULE} ${DALI_WEB_EQ32_MODULE} ${DALI_WEB_COMPRESSOR_MODULE} ${DALI_WEB_LIMITER_MODULE} ${DALI_WEB_BASS_ENHANCER_MODULE} ${DALI_WEB_AUTO_GAIN_MODULE})
 
 set(DALI_MANIFEST ${CMAKE_CURRENT_SOURCE_DIR}/browser/dali/browser.dali)
 set(DALI_POLICY_GENERATOR ${CMAKE_CURRENT_SOURCE_DIR}/browser/scripts/generate-browser-policy.js)
@@ -118,7 +118,7 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/adblock
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/i18n
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
-foreach(NTP_ASSET ardali-flow-blue.png google.ico duckduckgo.ico brave.ico bing.ico)
+foreach(NTP_ASSET dalinira-flow-blue.png google.ico duckduckgo.ico startpage.ico mojeek.ico)
   configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/new-tab/${NTP_ASSET}
     ${CMAKE_CURRENT_BINARY_DIR}/assets/new-tab/${NTP_ASSET}
@@ -133,8 +133,8 @@ foreach(NTP_ICON appearance.svg settings.svg search.svg grid.svg clock.svg cards
   )
 endforeach()
 configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-128.png
-  ${CMAKE_CURRENT_BINARY_DIR}/assets/new-tab/ardali-browser.png
+  ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/dalinira-browser-128.png
+  ${CMAKE_CURRENT_BINARY_DIR}/assets/new-tab/dalinira-browser.png
   COPYONLY
 )
 
@@ -144,7 +144,7 @@ add_custom_command(
   DEPENDS ${DALI_MANIFEST} ${DALI_POLICY_GENERATOR} ${CMAKE_CURRENT_SOURCE_DIR}/dali-lang/src/index.js
   VERBATIM
 )
-add_custom_target(ardali-browser-policy DEPENDS ${DALI_POLICY_JSON})
+add_custom_target(dalinira-browser-policy DEPENDS ${DALI_POLICY_JSON})
 
 # -------------------------------------------------------------
 # Source list
@@ -167,8 +167,9 @@ set(CORE_SOURCES
   browser/native/core/history_candidate_provider.cpp
   browser/native/core/bookmark_candidate_provider.cpp
   browser/native/core/frequent_sites_candidate_provider.cpp
-  browser/native/core/composite_navigation_candidate_provider.cpp
+   browser/native/core/composite_navigation_candidate_provider.cpp
   browser/native/core/address_input_resolver.cpp
+  browser/native/core/adult_content_protection.cpp
 )
 
 set(NEWTAB_SOURCES
@@ -226,13 +227,13 @@ set(EQ_SOURCES
 )
 
 set(BLOCKER_SOURCES
-  browser/native/blocker/ardali_blocker_settings.cpp
-  browser/native/blocker/ardali_blocker_engine.cpp
-  browser/native/blocker/ardali_blocker_list_manager.cpp
-  browser/native/blocker/ardali_blocker_request_interceptor.cpp
-  browser/native/blocker/ardali_blocker_service.cpp
-  browser/native/blocker/ardali_blocker_page.cpp
-  browser/native/blocker/ardali_blocker_shield_button.cpp
+  browser/native/blocker/dalinira_blocker_settings.cpp
+  browser/native/blocker/dalinira_blocker_engine.cpp
+  browser/native/blocker/dalinira_blocker_list_manager.cpp
+  browser/native/blocker/dalinira_blocker_request_interceptor.cpp
+  browser/native/blocker/dalinira_blocker_service.cpp
+  browser/native/blocker/dalinira_blocker_page.cpp
+  browser/native/blocker/dalinira_blocker_shield_button.cpp
 )
 
 set(PASSWORDS_SOURCES
@@ -308,38 +309,96 @@ set(BROWSER_SOURCES
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  add_executable(ardali-webengine-process
+  add_executable(dalinira-webengine-process
     browser/native/core/web_engine_process_launcher.cpp
   )
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(ardali-webengine-process PRIVATE -Wall -Wextra)
+    target_compile_options(dalinira-webengine-process PRIVATE -Wall -Wextra)
   endif()
 endif()
 
-add_executable(ardali-browser ${BROWSER_SOURCES})
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  target_compile_options(ardali-browser PRIVATE -Wall -Wextra -Wno-unused-parameter)
+set(DALINIRA_ADULT_DOMAINS_MANAGED_SOURCE
+  "${CMAKE_CURRENT_BINARY_DIR}/upstream_porn_blocklist_production.txt")
+set(DALINIRA_ADULT_DOMAINS_SOURCE
+  "${DALINIRA_ADULT_DOMAINS_MANAGED_SOURCE}"
+  CACHE FILEPATH "Production domain text used to build adult_domains.bin")
+set(DALINIRA_ADULT_DOMAINS_SNAPSHOT
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/privacy/adult_domains.bin")
+set(DALINIRA_ADULT_DOMAINS_UPSTREAM_COMMIT
+  "ee3bdbaddf49c756cf3340bb2e6a9dee5282d1c6")
+set(DALINIRA_ADULT_DOMAINS_UPSTREAM_URL
+  "https://raw.githubusercontent.com/blocklistproject/Lists/${DALINIRA_ADULT_DOMAINS_UPSTREAM_COMMIT}/alt-version/porn-nl.txt")
+set(DALINIRA_ADULT_DOMAINS_UPSTREAM_SHA256
+  "5e876678921406025032ac6fa9908cfce98216f6af0f7c0cd8e74a334b232dd4")
+set(DALINIRA_ADULT_DOMAINS_FETCH_SCRIPT
+  "${CMAKE_CURRENT_SOURCE_DIR}/browser/cmake/fetch_adult_domains.cmake")
+
+add_executable(dalinira-adult-domain-snapshot-generator
+  browser/native/core/adult_content_protection.cpp
+  browser/native/tools/adult_domain_snapshot_generator.cpp)
+target_link_libraries(dalinira-adult-domain-snapshot-generator PRIVATE Qt6::Core Qt6::Network)
+target_include_directories(dalinira-adult-domain-snapshot-generator PRIVATE browser/native)
+
+if(DALINIRA_ADULT_DOMAINS_SOURCE STREQUAL DALINIRA_ADULT_DOMAINS_MANAGED_SOURCE)
+  add_custom_target(dalinira-adult-domains-source
+    COMMAND ${CMAKE_COMMAND}
+      -DDALINIRA_ADULT_DOMAINS_OUTPUT=${DALINIRA_ADULT_DOMAINS_SOURCE}
+      -DDALINIRA_ADULT_DOMAINS_URL=${DALINIRA_ADULT_DOMAINS_UPSTREAM_URL}
+      -DDALINIRA_ADULT_DOMAINS_SHA256=${DALINIRA_ADULT_DOMAINS_UPSTREAM_SHA256}
+      -P ${DALINIRA_ADULT_DOMAINS_FETCH_SCRIPT}
+    BYPRODUCTS ${DALINIRA_ADULT_DOMAINS_SOURCE}
+    DEPENDS ${DALINIRA_ADULT_DOMAINS_FETCH_SCRIPT}
+    COMMENT "Obtaining pinned Adult Protection production source"
+    VERBATIM)
+else()
+  if(NOT EXISTS "${DALINIRA_ADULT_DOMAINS_SOURCE}")
+    message(FATAL_ERROR
+      "Custom Adult Protection production source does not exist: ${DALINIRA_ADULT_DOMAINS_SOURCE}")
+  endif()
+  add_custom_target(dalinira-adult-domains-source)
 endif()
 
-qt_add_resources(ardali-browser "app_icons"
+add_custom_command(
+  OUTPUT ${DALINIRA_ADULT_DOMAINS_SNAPSHOT}
+  COMMAND ${CMAKE_COMMAND} -E make_directory
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/privacy
+  COMMAND $<TARGET_FILE:dalinira-adult-domain-snapshot-generator>
+    ${DALINIRA_ADULT_DOMAINS_SOURCE}
+    ${DALINIRA_ADULT_DOMAINS_SNAPSHOT}
+  DEPENDS
+    dalinira-adult-domain-snapshot-generator
+    ${DALINIRA_ADULT_DOMAINS_SOURCE}
+  COMMENT "Generating and validating Adult Protection domain snapshot"
+  VERBATIM)
+add_custom_target(dalinira-adult-domain-snapshot
+  DEPENDS ${DALINIRA_ADULT_DOMAINS_SNAPSHOT})
+add_dependencies(dalinira-adult-domain-snapshot
+  dalinira-adult-domains-source)
+
+add_executable(dalinira-browser ${BROWSER_SOURCES})
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(dalinira-browser PRIVATE -Wall -Wextra -Wno-unused-parameter)
+endif()
+
+qt_add_resources(dalinira-browser "app_icons"
   PREFIX "/"
   BASE browser
   FILES
-    browser/assets/icons/ardali-browser-16.png
-    browser/assets/icons/ardali-browser-32.png
-    browser/assets/icons/ardali-browser-128.png
-    browser/assets/icons/ardali-browser-256.png
+    browser/assets/icons/dalinira-browser-16.png
+    browser/assets/icons/dalinira-browser-32.png
+    browser/assets/icons/dalinira-browser-128.png
+    browser/assets/icons/dalinira-browser-256.png
 )
 
-qt_add_resources(ardali-browser "app_icons_alias"
+qt_add_resources(dalinira-browser "app_icons_alias"
   PREFIX "/icons"
   BASE browser/assets/icons
   FILES
-    browser/assets/icons/ardali-browser-256.png
-    browser/assets/icons/ardali-browser-128.png
+    browser/assets/icons/dalinira-browser-256.png
+    browser/assets/icons/dalinira-browser-128.png
 )
 
-qt_add_resources(ardali-browser "side_widget_icons"
+qt_add_resources(dalinira-browser "side_widget_icons"
   PREFIX "/side-widget-icons"
   BASE browser/assets/side-widget-icons
   FILES
@@ -359,7 +418,7 @@ qt_add_resources(ardali-browser "side_widget_icons"
     browser/assets/side-widget-icons/about.svg
 )
 
-qt_add_resources(ardali-browser "browser_icons"
+qt_add_resources(dalinira-browser "browser_icons"
   PREFIX "/browser-icons"
   BASE browser/assets/browser-icons
   FILES
@@ -432,31 +491,31 @@ qt_add_resources(ardali-browser "browser_icons"
     browser/assets/browser-icons/tune.svg
 )
 
-qt_add_resources(ardali-browser "search_engine_icons"
+qt_add_resources(dalinira-browser "search_engine_icons"
   PREFIX "/search-engines"
   BASE browser/assets/new-tab
   FILES
     browser/assets/new-tab/google.ico
     browser/assets/new-tab/duckduckgo.ico
-    browser/assets/new-tab/brave.ico
-    browser/assets/new-tab/bing.ico
+    browser/assets/new-tab/startpage.ico
+    browser/assets/new-tab/mojeek.ico
 )
 
-qt_add_resources(ardali-browser "new_tab_asset_fallbacks"
+qt_add_resources(dalinira-browser "new_tab_asset_fallbacks"
   PREFIX "/new-tab"
   BASE browser/assets/new-tab
   FILES
-    browser/assets/new-tab/ardali-flow-blue.png
+    browser/assets/new-tab/dalinira-flow-blue.png
 )
 
-qt_add_resources(ardali-browser "translate_scripts"
+qt_add_resources(dalinira-browser "translate_scripts"
   PREFIX "/translate"
   BASE browser/native/translate/resources
   FILES
     browser/native/translate/resources/translate_engine.js
 )
 
-qt_add_resources(ardali-browser "i18n_resources"
+qt_add_resources(dalinira-browser "i18n_resources"
   PREFIX "/i18n"
   BASE i18n
   FILES
@@ -466,7 +525,17 @@ qt_add_resources(ardali-browser "i18n_resources"
     i18n/translations/ar.json
 )
 
-target_link_libraries(ardali-browser PRIVATE
+set_source_files_properties(${DALINIRA_ADULT_DOMAINS_SNAPSHOT} PROPERTIES
+  GENERATED TRUE
+  QT_RESOURCE_ALIAS adult_domains.bin)
+qt_add_resources(dalinira-browser "privacy_resources"
+  PREFIX "/privacy"
+  FILES
+    ${DALINIRA_ADULT_DOMAINS_SNAPSHOT}
+    browser/resources/privacy/adult_allowlist.txt
+)
+
+target_link_libraries(dalinira-browser PRIVATE
   Qt6::Core
   Qt6::Gui
   Qt6::Widgets
@@ -478,35 +547,50 @@ target_link_libraries(ardali-browser PRIVATE
   OpenSSL::Crypto
 )
 
-target_compile_definitions(ardali-browser PRIVATE
-  ARDALI_BROWSER_POLICY_PATH="${DALI_POLICY_JSON}"
-  ARDALI_BROWSER_VERSION="${PROJECT_VERSION}"
-  ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH="dali/web-output-audiophile.generated.js"
-  ARDALI_WEB_EQ32_DALI_MODULE_RELATIVE_PATH="dali/web-equalizer-32.generated.js"
-  ARDALI_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH="dali/web-dynamic-compressor.generated.js"
-  ARDALI_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH="dali/web-limiter.generated.js"
-  ARDALI_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH="dali/web-bass-enhancer.generated.js"
-  ARDALI_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js"
+target_compile_definitions(dalinira-browser PRIVATE
+  DALINIRA_BROWSER_POLICY_PATH="${DALI_POLICY_JSON}"
+  DALINIRA_BROWSER_VERSION="${PROJECT_VERSION}"
+  DALINIRA_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH="dali/web-output-audiophile.generated.js"
+  DALINIRA_WEB_EQ32_DALI_MODULE_RELATIVE_PATH="dali/web-equalizer-32.generated.js"
+  DALINIRA_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH="dali/web-dynamic-compressor.generated.js"
+  DALINIRA_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH="dali/web-limiter.generated.js"
+  DALINIRA_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH="dali/web-bass-enhancer.generated.js"
+  DALINIRA_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js"
 )
 
-add_custom_target(ardali-eq-presets-runtime ALL
+add_custom_target(dalinira-eq-presets-runtime ALL
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/eq-presets
     ${CMAKE_CURRENT_BINARY_DIR}/eq-presets
   VERBATIM
 )
 
-add_dependencies(ardali-browser
-  ardali-browser-policy
-  ardali-web-output-dali
-  ardali-eq-presets-runtime
+add_custom_target(dalinira-privacy-resources-runtime ALL
+  COMMAND ${CMAKE_COMMAND} -E make_directory
+    ${CMAKE_CURRENT_BINARY_DIR}/resources/privacy
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${DALINIRA_ADULT_DOMAINS_SNAPSHOT}
+    ${CMAKE_CURRENT_BINARY_DIR}/resources/privacy/adult_domains.bin
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/privacy/adult_allowlist.txt
+    ${CMAKE_CURRENT_BINARY_DIR}/resources/privacy/adult_allowlist.txt
+  DEPENDS dalinira-adult-domain-snapshot
+  VERBATIM
 )
-if(TARGET ardali-webengine-process)
-  add_dependencies(ardali-browser ardali-webengine-process)
+
+add_dependencies(dalinira-browser
+  dalinira-browser-policy
+  dalinira-web-output-dali
+  dalinira-eq-presets-runtime
+  dalinira-privacy-resources-runtime
+  dalinira-adult-domain-snapshot
+)
+if(TARGET dalinira-webengine-process)
+  add_dependencies(dalinira-browser dalinira-webengine-process)
 endif()
 
-set_target_properties(ardali-browser PROPERTIES
-  OUTPUT_NAME "ardali-browser"
+set_target_properties(dalinira-browser PROPERTIES
+  OUTPUT_NAME "dalinira-browser"
 )
 
 # -------------------------------------------------------------
@@ -514,45 +598,45 @@ set_target_properties(ardali-browser PROPERTIES
 # -------------------------------------------------------------
 enable_testing()
 
-add_executable(ardali-browser-policy-test
+add_executable(dalinira-browser-policy-test
   browser/native/tests/browser_policy_test.cpp
   browser/native/core/browser_policy.cpp
 )
-target_link_libraries(ardali-browser-policy-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
-target_compile_definitions(ardali-browser-policy-test PRIVATE ARDALI_BROWSER_POLICY_PATH="${DALI_POLICY_JSON}")
-add_dependencies(ardali-browser-policy-test ardali-browser-policy)
-add_test(NAME browser-policy-test COMMAND ardali-browser-policy-test)
+target_link_libraries(dalinira-browser-policy-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
+target_compile_definitions(dalinira-browser-policy-test PRIVATE DALINIRA_BROWSER_POLICY_PATH="${DALI_POLICY_JSON}")
+add_dependencies(dalinira-browser-policy-test dalinira-browser-policy)
+add_test(NAME browser-policy-test COMMAND dalinira-browser-policy-test)
 
-add_executable(ardali-browser-security-utils-test
+add_executable(dalinira-browser-security-utils-test
   browser/native/tests/security_utils_test.cpp
   browser/native/core/security_utils.cpp
 )
-target_link_libraries(ardali-browser-security-utils-test PRIVATE Qt6::Core)
-add_test(NAME browser-security-utils COMMAND ardali-browser-security-utils-test)
+target_link_libraries(dalinira-browser-security-utils-test PRIVATE Qt6::Core)
+add_test(NAME browser-security-utils COMMAND dalinira-browser-security-utils-test)
 
-add_executable(ardali-browser-web-engine-hardware-acceleration-test
+add_executable(dalinira-browser-web-engine-hardware-acceleration-test
   browser/native/tests/web_engine_hardware_acceleration_test.cpp
   browser/native/core/web_engine_hardware_acceleration.cpp
 )
-target_link_libraries(ardali-browser-web-engine-hardware-acceleration-test PRIVATE Qt6::Core)
-add_test(NAME browser-web-engine-hardware-acceleration COMMAND ardali-browser-web-engine-hardware-acceleration-test)
+target_link_libraries(dalinira-browser-web-engine-hardware-acceleration-test PRIVATE Qt6::Core)
+add_test(NAME browser-web-engine-hardware-acceleration COMMAND dalinira-browser-web-engine-hardware-acceleration-test)
 
-add_executable(ardali-browser-web-engine-memory-policy-test
+add_executable(dalinira-browser-web-engine-memory-policy-test
   browser/native/tests/web_engine_memory_policy_test.cpp
   browser/native/core/web_engine_memory_policy.cpp
 )
-target_link_libraries(ardali-browser-web-engine-memory-policy-test PRIVATE Qt6::Core)
-add_test(NAME browser-web-engine-memory-policy COMMAND ardali-browser-web-engine-memory-policy-test)
+target_link_libraries(dalinira-browser-web-engine-memory-policy-test PRIVATE Qt6::Core)
+add_test(NAME browser-web-engine-memory-policy COMMAND dalinira-browser-web-engine-memory-policy-test)
 
-add_executable(ardali-browser-eq-preset-repository-test
+add_executable(dalinira-browser-eq-preset-repository-test
   browser/native/tests/eq_preset_repository_test.cpp
   browser/native/eq/eq_preset_repository.cpp
 )
-target_link_libraries(ardali-browser-eq-preset-repository-test PRIVATE Qt6::Core)
-add_dependencies(ardali-browser-eq-preset-repository-test ardali-eq-presets-runtime)
-add_test(NAME browser-eq-preset-repository COMMAND ardali-browser-eq-preset-repository-test)
+target_link_libraries(dalinira-browser-eq-preset-repository-test PRIVATE Qt6::Core)
+add_dependencies(dalinira-browser-eq-preset-repository-test dalinira-eq-presets-runtime)
+add_test(NAME browser-eq-preset-repository COMMAND dalinira-browser-eq-preset-repository-test)
 
-add_executable(ardali-browser-web-audio-effects-test
+add_executable(dalinira-browser-web-audio-effects-test
   browser/native/tests/web_audio_effects_controller_test.cpp
   browser/native/audio/audio_platform_policy.cpp
   browser/native/audio/web_audio_effects_controller.cpp
@@ -560,19 +644,19 @@ add_executable(ardali-browser-web-audio-effects-test
   browser/native/eq/eq_preset_repository.cpp
   browser/native/eq/eq_preset_page.cpp
 )
-target_link_libraries(ardali-browser-web-audio-effects-test PRIVATE
+target_link_libraries(dalinira-browser-web-audio-effects-test PRIVATE
   Qt6::Core Qt6::Gui Qt6::Widgets Qt6::WebEngineWidgets Qt6::Svg
 )
-target_compile_definitions(ardali-browser-web-audio-effects-test PRIVATE
-  ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH="dali/web-output-audiophile.generated.js"
-  ARDALI_WEB_EQ32_DALI_MODULE_RELATIVE_PATH="dali/web-equalizer-32.generated.js"
-  ARDALI_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH="dali/web-dynamic-compressor.generated.js"
-  ARDALI_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH="dali/web-limiter.generated.js"
-  ARDALI_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH="dali/web-bass-enhancer.generated.js"
-  ARDALI_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js"
+target_compile_definitions(dalinira-browser-web-audio-effects-test PRIVATE
+  DALINIRA_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH="dali/web-output-audiophile.generated.js"
+  DALINIRA_WEB_EQ32_DALI_MODULE_RELATIVE_PATH="dali/web-equalizer-32.generated.js"
+  DALINIRA_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH="dali/web-dynamic-compressor.generated.js"
+  DALINIRA_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH="dali/web-limiter.generated.js"
+  DALINIRA_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH="dali/web-bass-enhancer.generated.js"
+  DALINIRA_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js"
 )
-add_dependencies(ardali-browser-web-audio-effects-test ardali-web-output-dali ardali-eq-presets-runtime)
-add_test(NAME browser-web-audio-effects COMMAND ardali-browser-web-audio-effects-test)
+add_dependencies(dalinira-browser-web-audio-effects-test dalinira-web-output-dali dalinira-eq-presets-runtime)
+add_test(NAME browser-web-audio-effects COMMAND dalinira-browser-web-audio-effects-test)
 set_tests_properties(browser-web-audio-effects PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_DISABLE_SANDBOX=1;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu"
   TIMEOUT 60
@@ -580,22 +664,22 @@ set_tests_properties(browser-web-audio-effects PROPERTIES
 
 add_test(NAME browser-installed-package-layout
   COMMAND ${CMAKE_COMMAND}
-    -DARDALI_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
-    -DARDALI_INSTALL_BINDIR=${CMAKE_INSTALL_BINDIR}
+    -DDALINIRA_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+    -DDALINIRA_INSTALL_BINDIR=${CMAKE_INSTALL_BINDIR}
     -P ${CMAKE_CURRENT_SOURCE_DIR}/browser/cmake/verify_install_layout.cmake
 )
 set_tests_properties(browser-installed-package-layout PROPERTIES TIMEOUT 90)
 
-add_executable(ardali-browser-credential-vault-test
+add_executable(dalinira-browser-credential-vault-test
   browser/native/tests/credential_vault_test.cpp
   browser/native/passwords/device_keyring.cpp
   browser/native/passwords/credential_vault.cpp
   browser/native/passwords/credential_vault_manager.cpp
 )
-target_link_libraries(ardali-browser-credential-vault-test PRIVATE Qt6::Widgets Qt6::DBus OpenSSL::Crypto)
-add_test(NAME browser-credential-vault-test COMMAND ardali-browser-credential-vault-test)
+target_link_libraries(dalinira-browser-credential-vault-test PRIVATE Qt6::Widgets Qt6::DBus OpenSSL::Crypto)
+add_test(NAME browser-credential-vault-test COMMAND dalinira-browser-credential-vault-test)
 
-add_executable(ardali-browser-password-autofill-test
+add_executable(dalinira-browser-password-autofill-test
   browser/native/tests/password_autofill_test.cpp
   browser/native/passwords/device_keyring.cpp
   browser/native/passwords/credential_vault.cpp
@@ -606,30 +690,30 @@ add_executable(ardali-browser-password-autofill-test
   browser/native/core/browser_icons.cpp
   browser/native/core/search_engine_definition.cpp
 )
-target_link_libraries(ardali-browser-password-autofill-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets Qt6::Concurrent Qt6::Svg Qt6::DBus OpenSSL::Crypto)
-qt_add_resources(ardali-browser-password-autofill-test "password_autofill_icons"
+target_link_libraries(dalinira-browser-password-autofill-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets Qt6::Concurrent Qt6::Svg Qt6::DBus OpenSSL::Crypto)
+qt_add_resources(dalinira-browser-password-autofill-test "password_autofill_icons"
     PREFIX "/browser-icons"
     BASE_DIR "browser/assets/browser-icons"
     FILES
     browser/assets/browser-icons/password.svg
 )
-add_test(NAME browser-password-autofill-test COMMAND ardali-browser-password-autofill-test)
+add_test(NAME browser-password-autofill-test COMMAND dalinira-browser-password-autofill-test)
 set_tests_properties(browser-password-autofill-test PROPERTIES
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_DISABLE_SANDBOX=1;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu;ARDALI_SLOW_WEBENGINE_CI=1"
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_DISABLE_SANDBOX=1;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu;DALINIRA_SLOW_WEBENGINE_CI=1"
   TIMEOUT 180)
 
-add_executable(ardali-password-manager-page-test
+add_executable(dalinira-password-manager-page-test
   browser/native/tests/password_manager_page_test.cpp
   browser/native/passwords/password_manager_page.cpp
   browser/native/passwords/device_keyring.cpp
   browser/native/passwords/credential_vault.cpp
   browser/native/passwords/credential_vault_manager.cpp
 )
-target_link_libraries(ardali-password-manager-page-test PRIVATE Qt6::Widgets Qt6::WebEngineCore Qt6::Concurrent Qt6::DBus OpenSSL::Crypto)
-add_test(NAME browser-password-manager-page-test COMMAND ardali-password-manager-page-test)
+target_link_libraries(dalinira-password-manager-page-test PRIVATE Qt6::Widgets Qt6::WebEngineCore Qt6::Concurrent Qt6::DBus OpenSSL::Crypto)
+add_test(NAME browser-password-manager-page-test COMMAND dalinira-password-manager-page-test)
 set_tests_properties(browser-password-manager-page-test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-add_executable(ardali-browser-song-finder-test
+add_executable(dalinira-browser-song-finder-test
   browser/native/tests/song_finder_test.cpp
   browser/native/pulse/song_finder_settings.cpp
   browser/native/audio/audio_device_manager.cpp
@@ -638,62 +722,63 @@ add_executable(ardali-browser-song-finder-test
   browser/native/pulse/song_recognition_service.cpp
   browser/native/core/security_utils.cpp
 )
-target_link_libraries(ardali-browser-song-finder-test PRIVATE Qt6::Core Qt6::Network Qt6::Concurrent)
-add_test(NAME browser-song-finder COMMAND ardali-browser-song-finder-test)
+target_link_libraries(dalinira-browser-song-finder-test PRIVATE Qt6::Core Qt6::Network Qt6::Concurrent)
+add_test(NAME browser-song-finder COMMAND dalinira-browser-song-finder-test)
 
-add_executable(ardali-browser-media-download-service-test
+add_executable(dalinira-browser-media-download-service-test
   browser/native/tests/media_download_service_test.cpp
   browser/native/downloads/media_download_service.cpp
   browser/native/downloads/yt_dlp_update_manager.cpp
+  browser/native/core/adult_content_protection.cpp
   browser/native/core/security_utils.cpp
 )
-target_link_libraries(ardali-browser-media-download-service-test PRIVATE Qt6::Core Qt6::Network)
-add_test(NAME browser-media-download-service COMMAND ardali-browser-media-download-service-test)
+target_link_libraries(dalinira-browser-media-download-service-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME browser-media-download-service COMMAND dalinira-browser-media-download-service-test)
 
-add_executable(ardali-browser-general-download-manager-test
+add_executable(dalinira-browser-general-download-manager-test
   browser/native/tests/general_download_manager_test.cpp
   browser/native/downloads/general_download_manager.cpp
   browser/native/core/security_utils.cpp
 )
-target_link_libraries(ardali-browser-general-download-manager-test PRIVATE Qt6::Core Qt6::Network)
-add_test(NAME browser-general-download-manager COMMAND ardali-browser-general-download-manager-test)
+target_link_libraries(dalinira-browser-general-download-manager-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME browser-general-download-manager COMMAND dalinira-browser-general-download-manager-test)
 
-add_executable(ardali-browser-new-tab-asset-resolver-test
+add_executable(dalinira-browser-new-tab-asset-resolver-test
   browser/native/tests/new_tab_asset_resolver_test.cpp
   browser/native/newtab/new_tab_asset_resolver.cpp
 )
-target_link_libraries(ardali-browser-new-tab-asset-resolver-test PRIVATE Qt6::Core)
-add_test(NAME browser-new-tab-asset-resolver COMMAND ardali-browser-new-tab-asset-resolver-test)
+target_link_libraries(dalinira-browser-new-tab-asset-resolver-test PRIVATE Qt6::Core)
+add_test(NAME browser-new-tab-asset-resolver COMMAND dalinira-browser-new-tab-asset-resolver-test)
 
-add_executable(ardali-browser-download-ui-model-test
+add_executable(dalinira-browser-download-ui-model-test
   browser/native/tests/download_ui_model_test.cpp
 )
-target_link_libraries(ardali-browser-download-ui-model-test PRIVATE Qt6::Core)
-add_test(NAME browser-download-ui-model COMMAND ardali-browser-download-ui-model-test)
+target_link_libraries(dalinira-browser-download-ui-model-test PRIVATE Qt6::Core)
+add_test(NAME browser-download-ui-model COMMAND dalinira-browser-download-ui-model-test)
 
-add_executable(ardali-browser-local-media-routing-test
+add_executable(dalinira-browser-local-media-routing-test
   browser/native/tests/local_media_routing_test.cpp
   browser/native/downloads/local_media_routing.cpp)
-target_link_libraries(ardali-browser-local-media-routing-test PRIVATE Qt6::Core)
-add_test(NAME browser-local-media-routing COMMAND ardali-browser-local-media-routing-test)
+target_link_libraries(dalinira-browser-local-media-routing-test PRIVATE Qt6::Core)
+add_test(NAME browser-local-media-routing COMMAND dalinira-browser-local-media-routing-test)
 
-add_executable(ardali-browser-application-identity-test
+add_executable(dalinira-browser-application-identity-test
   browser/native/tests/application_identity_test.cpp
   browser/native/core/application_identity.cpp)
-target_compile_definitions(ardali-browser-application-identity-test PRIVATE
-  ARDALI_DESKTOP_FILE="${CMAKE_CURRENT_BINARY_DIR}/ardali.desktop")
-target_link_libraries(ardali-browser-application-identity-test PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
-add_test(NAME browser-application-identity COMMAND ardali-browser-application-identity-test)
+target_compile_definitions(dalinira-browser-application-identity-test PRIVATE
+  DALINIRA_DESKTOP_FILE="${CMAKE_CURRENT_BINARY_DIR}/dalinira.desktop")
+target_link_libraries(dalinira-browser-application-identity-test PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+add_test(NAME browser-application-identity COMMAND dalinira-browser-application-identity-test)
 set_tests_properties(browser-application-identity PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-add_executable(ardali-browser-media-platform-registry-test
+add_executable(dalinira-browser-media-platform-registry-test
   browser/native/tests/media_platform_registry_test.cpp
   browser/native/downloads/media_platform_registry.cpp
 )
-target_link_libraries(ardali-browser-media-platform-registry-test PRIVATE Qt6::Core)
-add_test(NAME browser-media-platform-registry COMMAND ardali-browser-media-platform-registry-test)
+target_link_libraries(dalinira-browser-media-platform-registry-test PRIVATE Qt6::Core)
+add_test(NAME browser-media-platform-registry COMMAND dalinira-browser-media-platform-registry-test)
 
-add_executable(ardali-browser-desktop-tab-system-test
+add_executable(dalinira-browser-desktop-tab-system-test
   browser/native/tests/desktop_tab_system_test.cpp
   browser/native/desktop_tabs/tab_appearance.cpp
   browser/native/desktop_tabs/tab_layout_model.cpp
@@ -706,11 +791,11 @@ add_executable(ardali-browser-desktop-tab-system-test
   browser/native/desktop_tabs/tab_drag_controller.cpp
   browser/native/desktop_tabs/platform/tab_drag_platform.cpp
 )
-target_link_libraries(ardali-browser-desktop-tab-system-test PRIVATE Qt6::Widgets Qt6::Gui)
-add_test(NAME browser-desktop-tab-system COMMAND ardali-browser-desktop-tab-system-test)
+target_link_libraries(dalinira-browser-desktop-tab-system-test PRIVATE Qt6::Widgets Qt6::Gui)
+add_test(NAME browser-desktop-tab-system COMMAND dalinira-browser-desktop-tab-system-test)
 set_tests_properties(browser-desktop-tab-system PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=xcb")
 
-add_executable(ardali-browser-tab-drag-controller-test
+add_executable(dalinira-browser-tab-drag-controller-test
   browser/native/tests/tab_drag_controller_test.cpp
   browser/native/desktop_tabs/tab_appearance.cpp
   browser/native/desktop_tabs/tab_layout_model.cpp
@@ -723,11 +808,11 @@ add_executable(ardali-browser-tab-drag-controller-test
   browser/native/desktop_tabs/tab_drag_controller.cpp
   browser/native/desktop_tabs/platform/tab_drag_platform.cpp
 )
-target_link_libraries(ardali-browser-tab-drag-controller-test PRIVATE Qt6::Widgets Qt6::Gui)
-add_test(NAME browser-tab-drag-controller COMMAND ardali-browser-tab-drag-controller-test)
+target_link_libraries(dalinira-browser-tab-drag-controller-test PRIVATE Qt6::Widgets Qt6::Gui)
+add_test(NAME browser-tab-drag-controller COMMAND dalinira-browser-tab-drag-controller-test)
 set_tests_properties(browser-tab-drag-controller PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=xcb")
 
-add_executable(ardali-browser-critical-tab-drag-scenario-test
+add_executable(dalinira-browser-critical-tab-drag-scenario-test
   browser/native/tests/critical_tab_drag_scenario_test.cpp
   browser/native/desktop_tabs/tab_appearance.cpp
   browser/native/desktop_tabs/tab_layout_model.cpp
@@ -740,18 +825,18 @@ add_executable(ardali-browser-critical-tab-drag-scenario-test
   browser/native/desktop_tabs/tab_drag_controller.cpp
   browser/native/desktop_tabs/platform/tab_drag_platform.cpp
 )
-target_link_libraries(ardali-browser-critical-tab-drag-scenario-test PRIVATE Qt6::Widgets Qt6::Gui)
-add_test(NAME browser-critical-tab-drag-scenario COMMAND ardali-browser-critical-tab-drag-scenario-test)
+target_link_libraries(dalinira-browser-critical-tab-drag-scenario-test PRIVATE Qt6::Widgets Qt6::Gui)
+add_test(NAME browser-critical-tab-drag-scenario COMMAND dalinira-browser-critical-tab-drag-scenario-test)
 
-add_executable(ardali-browser-runtime-feature-integration-test
+add_executable(dalinira-browser-runtime-feature-integration-test
   browser/native/tests/runtime_feature_integration_test.cpp
   browser/native/audio/audio_platform_policy.cpp
   browser/native/audio/web_audio_effects_controller.cpp
-  browser/native/blocker/ardali_blocker_service.cpp
-  browser/native/blocker/ardali_blocker_engine.cpp
-  browser/native/blocker/ardali_blocker_list_manager.cpp
-  browser/native/blocker/ardali_blocker_request_interceptor.cpp
-  browser/native/blocker/ardali_blocker_settings.cpp
+  browser/native/blocker/dalinira_blocker_service.cpp
+  browser/native/blocker/dalinira_blocker_engine.cpp
+  browser/native/blocker/dalinira_blocker_list_manager.cpp
+  browser/native/blocker/dalinira_blocker_request_interceptor.cpp
+  browser/native/blocker/dalinira_blocker_settings.cpp
   browser/native/pulse/song_recognition_service.cpp
   browser/native/pulse/song_finder_settings.cpp
   browser/native/audio/audio_capture_service.cpp
@@ -760,72 +845,73 @@ add_executable(ardali-browser-runtime-feature-integration-test
   browser/native/newtab/new_tab_scheme.cpp
   browser/native/newtab/new_tab_html.cpp
   browser/native/core/security_utils.cpp
+  browser/native/core/adult_content_protection.cpp
   browser/native/core/search_engine_definition.cpp
   browser/native/core/search_suggestion_service.cpp
   browser/native/downloads/media_download_service.cpp
   browser/native/downloads/yt_dlp_update_manager.cpp
-  browser/native/blocker/ardali_blocker_shield_button.cpp
+  browser/native/blocker/dalinira_blocker_shield_button.cpp
 )
-target_link_libraries(ardali-browser-runtime-feature-integration-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Concurrent)
-target_compile_definitions(ardali-browser-runtime-feature-integration-test PRIVATE
-  ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH="dali/web-output-audiophile.generated.js"
-  ARDALI_WEB_EQ32_DALI_MODULE_RELATIVE_PATH="dali/web-equalizer-32.generated.js"
-  ARDALI_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH="dali/web-dynamic-compressor.generated.js"
-  ARDALI_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH="dali/web-limiter.generated.js"
-  ARDALI_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH="dali/web-bass-enhancer.generated.js"
-  ARDALI_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js"
+target_link_libraries(dalinira-browser-runtime-feature-integration-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Concurrent)
+target_compile_definitions(dalinira-browser-runtime-feature-integration-test PRIVATE
+  DALINIRA_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH="dali/web-output-audiophile.generated.js"
+  DALINIRA_WEB_EQ32_DALI_MODULE_RELATIVE_PATH="dali/web-equalizer-32.generated.js"
+  DALINIRA_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH="dali/web-dynamic-compressor.generated.js"
+  DALINIRA_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH="dali/web-limiter.generated.js"
+  DALINIRA_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH="dali/web-bass-enhancer.generated.js"
+  DALINIRA_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js"
 )
-add_test(NAME browser-runtime-feature-integration COMMAND ardali-browser-runtime-feature-integration-test)
+add_test(NAME browser-runtime-feature-integration COMMAND dalinira-browser-runtime-feature-integration-test)
 
-add_executable(ardali-browser-phase2a-policy-test
+add_executable(dalinira-browser-phase2a-policy-test
   browser/native/tests/phase2a_policy_test.cpp
   browser/native/audio/audio_platform_policy.cpp
   browser/native/audio/audio_device_manager.cpp
   browser/native/core/browser_permission_policy.cpp
   browser/native/core/security_utils.cpp
 )
-target_link_libraries(ardali-browser-phase2a-policy-test PRIVATE Qt6::Core Qt6::WebEngineWidgets)
-add_test(NAME browser-phase2a-policy COMMAND ardali-browser-phase2a-policy-test)
+target_link_libraries(dalinira-browser-phase2a-policy-test PRIVATE Qt6::Core Qt6::WebEngineWidgets)
+add_test(NAME browser-phase2a-policy COMMAND dalinira-browser-phase2a-policy-test)
 
-add_executable(ardali-browser-tab-scheduler-retry-test
+add_executable(dalinira-browser-tab-scheduler-retry-test
   browser/native/tests/tab_scheduler_retry_test.cpp
   browser/native/desktop_tabs/tab_manager.cpp
   browser/native/desktop_tabs/tab_performance_manager.cpp
   browser/native/desktop_tabs/system_memory_pressure_monitor.cpp
 )
-target_link_libraries(ardali-browser-tab-scheduler-retry-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
-add_test(NAME browser-tab-scheduler-retry COMMAND ardali-browser-tab-scheduler-retry-test)
+target_link_libraries(dalinira-browser-tab-scheduler-retry-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
+add_test(NAME browser-tab-scheduler-retry COMMAND dalinira-browser-tab-scheduler-retry-test)
 set_tests_properties(browser-tab-scheduler-retry PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 
-add_executable(ardali-browser-tab-hover-card-test
+add_executable(dalinira-browser-tab-hover-card-test
   browser/native/tests/tab_hover_card_test.cpp
   browser/native/desktop_tabs/tab_hover_card.cpp
   browser/native/core/browser_icons.cpp
   browser/native/core/search_engine_definition.cpp
   browser/native/core/search_suggestion_service.cpp
 )
-target_link_libraries(ardali-browser-tab-hover-card-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets Qt6::Svg)
-add_test(NAME browser-tab-hover-card COMMAND ardali-browser-tab-hover-card-test)
+target_link_libraries(dalinira-browser-tab-hover-card-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets Qt6::Svg)
+add_test(NAME browser-tab-hover-card COMMAND dalinira-browser-tab-hover-card-test)
 set_tests_properties(browser-tab-hover-card PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 
-add_executable(ardali-browser-address-input-resolver-test
+add_executable(dalinira-browser-address-input-resolver-test
   browser/native/core/search_engine_definition.cpp
   browser/native/tests/address_input_resolver_test.cpp
   browser/native/core/address_input_resolver.cpp
 )
-target_link_libraries(ardali-browser-address-input-resolver-test PRIVATE Qt6::Core Qt6::Network)
-add_test(NAME browser-address-input-resolver COMMAND ardali-browser-address-input-resolver-test)
+target_link_libraries(dalinira-browser-address-input-resolver-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME browser-address-input-resolver COMMAND dalinira-browser-address-input-resolver-test)
 
-add_executable(ardali-browser-omnibox-navigation-integration-test
+add_executable(dalinira-browser-omnibox-navigation-integration-test
   browser/native/core/search_engine_definition.cpp
   browser/native/tests/omnibox_navigation_integration_test.cpp
   browser/native/core/address_input_resolver.cpp
 )
-target_compile_definitions(ardali-browser-omnibox-navigation-integration-test PRIVATE ARDALI_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(ardali-browser-omnibox-navigation-integration-test PRIVATE Qt6::Core Qt6::Network)
-add_test(NAME browser-omnibox-navigation-integration COMMAND ardali-browser-omnibox-navigation-integration-test)
+target_compile_definitions(dalinira-browser-omnibox-navigation-integration-test PRIVATE DALINIRA_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(dalinira-browser-omnibox-navigation-integration-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME browser-omnibox-navigation-integration COMMAND dalinira-browser-omnibox-navigation-integration-test)
 
-add_executable(ardali-browser-smart-omnibox-phase2-test
+add_executable(dalinira-browser-smart-omnibox-phase2-test
   browser/native/core/search_engine_definition.cpp
   browser/native/tests/smart_omnibox_phase2_test.cpp
   browser/native/core/address_input_resolver.cpp
@@ -835,8 +921,8 @@ add_executable(ardali-browser-smart-omnibox-phase2-test
   browser/native/core/frequent_sites_candidate_provider.cpp
   browser/native/core/composite_navigation_candidate_provider.cpp
 )
-target_link_libraries(ardali-browser-smart-omnibox-phase2-test PRIVATE Qt6::Core Qt6::Network)
-add_test(NAME browser-smart-omnibox-phase2 COMMAND ardali-browser-smart-omnibox-phase2-test)
+target_link_libraries(dalinira-browser-smart-omnibox-phase2-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME browser-smart-omnibox-phase2 COMMAND dalinira-browser-smart-omnibox-phase2-test)
 
 add_executable(smart_omnibox_phase2_1_test
   browser/native/tests/smart_omnibox_phase2_1_test.cpp
@@ -846,15 +932,16 @@ add_executable(smart_omnibox_phase2_1_test
   browser/native/core/search_suggestion_service.cpp
   browser/native/core/browser_policy.cpp
   browser/native/core/security_utils.cpp
+  browser/native/core/adult_content_protection.cpp
   browser/native/newtab/new_tab_html.cpp
   browser/native/newtab/new_tab_asset_resolver.cpp
   browser/native/newtab/new_tab_scheme.cpp
   browser/native/newtab/new_tab_background_store.cpp
-  browser/native/blocker/ardali_blocker_settings.cpp
-  browser/native/blocker/ardali_blocker_engine.cpp
-  browser/native/blocker/ardali_blocker_list_manager.cpp
-  browser/native/blocker/ardali_blocker_request_interceptor.cpp
-  browser/native/blocker/ardali_blocker_service.cpp
+  browser/native/blocker/dalinira_blocker_settings.cpp
+  browser/native/blocker/dalinira_blocker_engine.cpp
+  browser/native/blocker/dalinira_blocker_list_manager.cpp
+  browser/native/blocker/dalinira_blocker_request_interceptor.cpp
+  browser/native/blocker/dalinira_blocker_service.cpp
   browser/native/passwords/device_keyring.cpp
   browser/native/passwords/credential_vault.cpp
   browser/native/passwords/credential_vault_manager.cpp
@@ -879,101 +966,128 @@ add_test(NAME smart_omnibox_phase2_1_test COMMAND smart_omnibox_phase2_1_test)
 set_tests_properties(smart_omnibox_phase2_1_test PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 
-add_executable(ardali-phase22d-test
+add_executable(dalinira-phase22d-test
   browser/native/tests/phase22d_test.cpp
   browser/native/newtab/new_tab_html.cpp
   browser/native/core/search_engine_definition.cpp
   browser/native/core/search_suggestion_service.cpp
-  browser/native/blocker/ardali_blocker_settings.cpp
-  browser/native/blocker/ardali_blocker_engine.cpp
-  browser/native/blocker/ardali_blocker_list_manager.cpp
-  browser/native/blocker/ardali_blocker_service.cpp
-  browser/native/blocker/ardali_blocker_request_interceptor.cpp
-  browser/native/blocker/ardali_blocker_shield_button.cpp
+  browser/native/blocker/dalinira_blocker_settings.cpp
+  browser/native/blocker/dalinira_blocker_engine.cpp
+  browser/native/blocker/dalinira_blocker_list_manager.cpp
+  browser/native/blocker/dalinira_blocker_service.cpp
+  browser/native/blocker/dalinira_blocker_request_interceptor.cpp
+  browser/native/blocker/dalinira_blocker_shield_button.cpp
+  browser/native/core/adult_content_protection.cpp
   browser/native/core/security_utils.cpp
 )
-target_link_libraries(ardali-phase22d-test PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::WebEngineWidgets Qt6::Concurrent)
-qt_add_resources(ardali-phase22d-test "phase22d_test_side_widget_icons"
+target_link_libraries(dalinira-phase22d-test PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::WebEngineWidgets Qt6::Concurrent)
+qt_add_resources(dalinira-phase22d-test "phase22d_test_side_widget_icons"
   PREFIX "/side-widget-icons"
   BASE browser/assets/side-widget-icons
   FILES
     browser/assets/side-widget-icons/deliblock.svg
 )
-add_test(NAME ardali-phase22d COMMAND ardali-phase22d-test)
-set_tests_properties(ardali-phase22d PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+add_test(NAME dalinira-phase22d COMMAND dalinira-phase22d-test)
+set_tests_properties(dalinira-phase22d PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
 
 # Release verification must execute assertions in the existing standalone tests.
-get_property(ARDALI_TEST_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
-foreach(ARDALI_TEST_TARGET IN LISTS ARDALI_TEST_TARGETS)
-  if(ARDALI_TEST_TARGET MATCHES "[-_]test$")
-    target_compile_options(${ARDALI_TEST_TARGET} PRIVATE -UNDEBUG)
+get_property(DALINIRA_TEST_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(DALINIRA_TEST_TARGET IN LISTS DALINIRA_TEST_TARGETS)
+  if(DALINIRA_TEST_TARGET MATCHES "[-_]test$")
+    target_compile_options(${DALINIRA_TEST_TARGET} PRIVATE -UNDEBUG)
   endif()
 endforeach()
 
 # Exercise the actual native window and privileged New Tab bridge as well as
 # the downloader's independent unit fixtures.
-get_target_property(ARDALI_PHASE22D_INTEGRATION_SOURCES ardali-browser SOURCES)
-list(REMOVE_ITEM ARDALI_PHASE22D_INTEGRATION_SOURCES browser/native/main.cpp)
-add_executable(ardali-phase22d-integration-test
-  ${ARDALI_PHASE22D_INTEGRATION_SOURCES}
+get_target_property(DALINIRA_PHASE22D_INTEGRATION_SOURCES dalinira-browser SOURCES)
+list(REMOVE_ITEM DALINIRA_PHASE22D_INTEGRATION_SOURCES browser/native/main.cpp)
+add_executable(dalinira-phase22d-integration-test
+  ${DALINIRA_PHASE22D_INTEGRATION_SOURCES}
   browser/native/tests/phase22d_integration_test.cpp)
-get_target_property(ARDALI_PHASE22D_LIBRARIES ardali-browser LINK_LIBRARIES)
-get_target_property(ARDALI_PHASE22D_DEFINITIONS ardali-browser COMPILE_DEFINITIONS)
-target_link_libraries(ardali-phase22d-integration-test PRIVATE ${ARDALI_PHASE22D_LIBRARIES})
-target_compile_definitions(ardali-phase22d-integration-test PRIVATE ${ARDALI_PHASE22D_DEFINITIONS})
-target_compile_options(ardali-phase22d-integration-test PRIVATE -UNDEBUG)
-add_dependencies(ardali-phase22d-integration-test ardali-browser-policy ardali-web-output-dali)
-add_test(NAME ardali-phase22d-integration COMMAND ardali-phase22d-integration-test)
-set(ARDALI_PHASE22D_TEST_TIMEOUT 120 CACHE STRING "Phase22d integration test timeout in seconds")
-set_tests_properties(ardali-phase22d-integration PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT ${ARDALI_PHASE22D_TEST_TIMEOUT})
+get_target_property(DALINIRA_PHASE22D_LIBRARIES dalinira-browser LINK_LIBRARIES)
+get_target_property(DALINIRA_PHASE22D_DEFINITIONS dalinira-browser COMPILE_DEFINITIONS)
+target_link_libraries(dalinira-phase22d-integration-test PRIVATE ${DALINIRA_PHASE22D_LIBRARIES})
+target_compile_definitions(dalinira-phase22d-integration-test PRIVATE ${DALINIRA_PHASE22D_DEFINITIONS})
+target_compile_options(dalinira-phase22d-integration-test PRIVATE -UNDEBUG)
+add_dependencies(dalinira-phase22d-integration-test dalinira-browser-policy dalinira-web-output-dali)
+add_test(NAME dalinira-phase22d-integration COMMAND dalinira-phase22d-integration-test)
+set(DALINIRA_PHASE22D_TEST_TIMEOUT 120 CACHE STRING "Phase22d integration test timeout in seconds")
+set_tests_properties(dalinira-phase22d-integration PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT ${DALINIRA_PHASE22D_TEST_TIMEOUT})
 
-get_target_property(ARDALI_BROWSER_FULL_SOURCES ardali-browser SOURCES)
-list(REMOVE_ITEM ARDALI_BROWSER_FULL_SOURCES browser/native/main.cpp)
-add_executable(ardali-browser-site-permission-test
-  ${ARDALI_BROWSER_FULL_SOURCES}
+get_target_property(DALINIRA_BROWSER_FULL_SOURCES dalinira-browser SOURCES)
+list(REMOVE_ITEM DALINIRA_BROWSER_FULL_SOURCES browser/native/main.cpp)
+add_executable(dalinira-browser-site-permission-test
+  ${DALINIRA_BROWSER_FULL_SOURCES}
   browser/native/tests/site_permission_system_test.cpp)
-get_target_property(ARDALI_BROWSER_FULL_LIBS ardali-browser LINK_LIBRARIES)
-get_target_property(ARDALI_BROWSER_FULL_DEFS ardali-browser COMPILE_DEFINITIONS)
-target_link_libraries(ardali-browser-site-permission-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
-if(ARDALI_BROWSER_FULL_DEFS)
-  target_compile_definitions(ardali-browser-site-permission-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+get_target_property(DALINIRA_BROWSER_FULL_LIBS dalinira-browser LINK_LIBRARIES)
+get_target_property(DALINIRA_BROWSER_FULL_DEFS dalinira-browser COMPILE_DEFINITIONS)
+target_link_libraries(dalinira-browser-site-permission-test PRIVATE ${DALINIRA_BROWSER_FULL_LIBS})
+if(DALINIRA_BROWSER_FULL_DEFS)
+  target_compile_definitions(dalinira-browser-site-permission-test PRIVATE ${DALINIRA_BROWSER_FULL_DEFS})
 endif()
-target_compile_options(ardali-browser-site-permission-test PRIVATE -UNDEBUG)
-add_dependencies(ardali-browser-site-permission-test ardali-browser-policy ardali-web-output-dali)
-add_test(NAME browser-site-permission COMMAND ardali-browser-site-permission-test)
+target_compile_options(dalinira-browser-site-permission-test PRIVATE -UNDEBUG)
+add_dependencies(dalinira-browser-site-permission-test dalinira-browser-policy dalinira-web-output-dali)
+add_test(NAME browser-site-permission COMMAND dalinira-browser-site-permission-test)
 set_tests_properties(browser-site-permission PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
 
-add_executable(ardali-browser-context-menu-test
-  ${ARDALI_BROWSER_FULL_SOURCES}
+add_executable(dalinira-browser-context-menu-test
+  ${DALINIRA_BROWSER_FULL_SOURCES}
   browser/native/tests/tab_and_link_context_menu_test.cpp)
-target_link_libraries(ardali-browser-context-menu-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
-if(ARDALI_BROWSER_FULL_DEFS)
-  target_compile_definitions(ardali-browser-context-menu-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+target_link_libraries(dalinira-browser-context-menu-test PRIVATE ${DALINIRA_BROWSER_FULL_LIBS})
+if(DALINIRA_BROWSER_FULL_DEFS)
+  target_compile_definitions(dalinira-browser-context-menu-test PRIVATE ${DALINIRA_BROWSER_FULL_DEFS})
 endif()
-target_compile_options(ardali-browser-context-menu-test PRIVATE -UNDEBUG)
-add_dependencies(ardali-browser-context-menu-test ardali-browser-policy ardali-web-output-dali)
-add_test(NAME browser-context-menu COMMAND ardali-browser-context-menu-test)
+target_compile_options(dalinira-browser-context-menu-test PRIVATE -UNDEBUG)
+add_dependencies(dalinira-browser-context-menu-test dalinira-browser-policy dalinira-web-output-dali)
+add_test(NAME browser-context-menu COMMAND dalinira-browser-context-menu-test)
 set_tests_properties(browser-context-menu PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
 
-add_executable(ardali-browser-step5-test
-  ${ARDALI_BROWSER_FULL_SOURCES}
-  browser/native/tests/step5_essential_features_test.cpp)
-target_link_libraries(ardali-browser-step5-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
-if(ARDALI_BROWSER_FULL_DEFS)
-  target_compile_definitions(ardali-browser-step5-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+add_executable(dalinira-adult-content-protection-test
+  ${DALINIRA_BROWSER_FULL_SOURCES}
+  browser/native/tests/adult_content_protection_test.cpp)
+target_link_libraries(dalinira-adult-content-protection-test PRIVATE ${DALINIRA_BROWSER_FULL_LIBS})
+if(DALINIRA_BROWSER_FULL_DEFS)
+  target_compile_definitions(dalinira-adult-content-protection-test PRIVATE ${DALINIRA_BROWSER_FULL_DEFS})
 endif()
-target_compile_options(ardali-browser-step5-test PRIVATE -UNDEBUG)
-add_dependencies(ardali-browser-step5-test ardali-browser-policy ardali-web-output-dali)
-add_test(NAME browser-step5-essential-features COMMAND ardali-browser-step5-test)
+target_compile_options(dalinira-adult-content-protection-test PRIVATE -UNDEBUG)
+add_dependencies(dalinira-adult-content-protection-test dalinira-browser-policy dalinira-web-output-dali dalinira-privacy-resources-runtime)
+add_test(NAME adult-content-protection-test COMMAND dalinira-adult-content-protection-test)
+set_tests_properties(adult-content-protection-test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_DISABLE_SANDBOX=1;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+
+add_executable(dalinira-adult-content-benchmark
+  browser/native/core/adult_content_protection.cpp
+  browser/native/tests/adult_content_benchmark.cpp)
+target_link_libraries(dalinira-adult-content-benchmark PRIVATE Qt6::Core Qt6::Network)
+target_include_directories(dalinira-adult-content-benchmark PRIVATE browser/native)
+
+add_executable(dalinira-adult-content-benchmark-release
+  browser/native/core/adult_content_protection.cpp
+  browser/native/tests/adult_content_benchmark.cpp)
+target_link_libraries(dalinira-adult-content-benchmark-release PRIVATE Qt6::Core Qt6::Network)
+target_include_directories(dalinira-adult-content-benchmark-release PRIVATE browser/native)
+target_compile_options(dalinira-adult-content-benchmark-release PRIVATE -O3 -DNDEBUG)
+
+
+add_executable(dalinira-browser-step5-test
+  ${DALINIRA_BROWSER_FULL_SOURCES}
+  browser/native/tests/step5_essential_features_test.cpp)
+target_link_libraries(dalinira-browser-step5-test PRIVATE ${DALINIRA_BROWSER_FULL_LIBS})
+if(DALINIRA_BROWSER_FULL_DEFS)
+  target_compile_definitions(dalinira-browser-step5-test PRIVATE ${DALINIRA_BROWSER_FULL_DEFS})
+endif()
+target_compile_options(dalinira-browser-step5-test PRIVATE -UNDEBUG)
+add_dependencies(dalinira-browser-step5-test dalinira-browser-policy dalinira-web-output-dali)
+add_test(NAME browser-step5-essential-features COMMAND dalinira-browser-step5-test)
 set_tests_properties(browser-step5-essential-features PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=xcb;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 120)
 
 set_tests_properties(smart_omnibox_phase2_1_test PROPERTIES TIMEOUT 90)
 
-add_executable(ardali-language-manager-test
+add_executable(dalinira-language-manager-test
   ${I18N_SOURCES}
   browser/native/tests/language_manager_test.cpp
 )
-qt_add_resources(ardali-language-manager-test "i18n_resources_test"
+qt_add_resources(dalinira-language-manager-test "i18n_resources_test"
   PREFIX "/i18n"
   BASE i18n
   FILES
@@ -982,66 +1096,66 @@ qt_add_resources(ardali-language-manager-test "i18n_resources_test"
     i18n/translations/tr.json
     i18n/translations/ar.json
 )
-target_link_libraries(ardali-language-manager-test PRIVATE
+target_link_libraries(dalinira-language-manager-test PRIVATE
   Qt6::Core
   Qt6::Gui
   Qt6::Widgets
 )
-target_compile_options(ardali-language-manager-test PRIVATE -UNDEBUG)
-add_test(NAME language-manager-test COMMAND ardali-language-manager-test)
+target_compile_options(dalinira-language-manager-test PRIVATE -UNDEBUG)
+add_test(NAME language-manager-test COMMAND dalinira-language-manager-test)
 set_tests_properties(language-manager-test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
 
 # Standalone regression programs which predate CTest registration. Keep each
 # executable independent so a failure identifies the affected subsystem.
-add_executable(ardali-browser-new-tab-background-store-test
+add_executable(dalinira-browser-new-tab-background-store-test
   browser/native/tests/new_tab_background_store_test.cpp
   browser/native/newtab/new_tab_background_store.cpp)
-target_link_libraries(ardali-browser-new-tab-background-store-test PRIVATE Qt6::Core Qt6::Gui)
-add_test(NAME browser-new-tab-background-store COMMAND ardali-browser-new-tab-background-store-test)
+target_link_libraries(dalinira-browser-new-tab-background-store-test PRIVATE Qt6::Core Qt6::Gui)
+add_test(NAME browser-new-tab-background-store COMMAND dalinira-browser-new-tab-background-store-test)
 
-add_executable(ardali-browser-tab-throbber-test
+add_executable(dalinira-browser-tab-throbber-test
   browser/native/tests/tab_throbber_test.cpp
   browser/native/desktop_tabs/tab_throbber.cpp)
-target_link_libraries(ardali-browser-tab-throbber-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
-add_test(NAME browser-tab-throbber COMMAND ardali-browser-tab-throbber-test)
+target_link_libraries(dalinira-browser-tab-throbber-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
+add_test(NAME browser-tab-throbber COMMAND dalinira-browser-tab-throbber-test)
 set_tests_properties(browser-tab-throbber PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 
-add_executable(ardali-browser-tab-manager-test
-  ${ARDALI_BROWSER_FULL_SOURCES}
+add_executable(dalinira-browser-tab-manager-test
+  ${DALINIRA_BROWSER_FULL_SOURCES}
   browser/native/tests/tab_manager_test.cpp)
-target_link_libraries(ardali-browser-tab-manager-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
-if(ARDALI_BROWSER_FULL_DEFS)
-  target_compile_definitions(ardali-browser-tab-manager-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+target_link_libraries(dalinira-browser-tab-manager-test PRIVATE ${DALINIRA_BROWSER_FULL_LIBS})
+if(DALINIRA_BROWSER_FULL_DEFS)
+  target_compile_definitions(dalinira-browser-tab-manager-test PRIVATE ${DALINIRA_BROWSER_FULL_DEFS})
 endif()
-add_dependencies(ardali-browser-tab-manager-test ardali-browser-policy ardali-web-output-dali)
-add_test(NAME browser-tab-manager COMMAND ardali-browser-tab-manager-test)
+add_dependencies(dalinira-browser-tab-manager-test dalinira-browser-policy dalinira-web-output-dali)
+add_test(NAME browser-tab-manager COMMAND dalinira-browser-tab-manager-test)
 set_tests_properties(browser-tab-manager PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 
-add_executable(ardali-browser-internal-tab-test
-  ${ARDALI_BROWSER_FULL_SOURCES}
+add_executable(dalinira-browser-internal-tab-test
+  ${DALINIRA_BROWSER_FULL_SOURCES}
   browser/native/tests/internal_tab_test.cpp)
-target_link_libraries(ardali-browser-internal-tab-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
-if(ARDALI_BROWSER_FULL_DEFS)
-  target_compile_definitions(ardali-browser-internal-tab-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+target_link_libraries(dalinira-browser-internal-tab-test PRIVATE ${DALINIRA_BROWSER_FULL_LIBS})
+if(DALINIRA_BROWSER_FULL_DEFS)
+  target_compile_definitions(dalinira-browser-internal-tab-test PRIVATE ${DALINIRA_BROWSER_FULL_DEFS})
 endif()
-add_dependencies(ardali-browser-internal-tab-test ardali-browser-policy ardali-web-output-dali)
-add_test(NAME browser-internal-tab COMMAND ardali-browser-internal-tab-test)
+add_dependencies(dalinira-browser-internal-tab-test dalinira-browser-policy dalinira-web-output-dali)
+add_test(NAME browser-internal-tab COMMAND dalinira-browser-internal-tab-test)
 set_tests_properties(browser-internal-tab PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 
-add_executable(ardali-browser-tab-performance-manager-test
+add_executable(dalinira-browser-tab-performance-manager-test
   browser/native/tests/tab_performance_manager_test.cpp
   browser/native/desktop_tabs/tab_manager.cpp
   browser/native/desktop_tabs/tab_performance_manager.cpp
   browser/native/desktop_tabs/system_memory_pressure_monitor.cpp)
-target_link_libraries(ardali-browser-tab-performance-manager-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
-add_test(NAME browser-tab-performance-manager COMMAND ardali-browser-tab-performance-manager-test)
+target_link_libraries(dalinira-browser-tab-performance-manager-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
+add_test(NAME browser-tab-performance-manager COMMAND dalinira-browser-tab-performance-manager-test)
 set_tests_properties(browser-tab-performance-manager PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
 
-add_executable(ardali-browser-page-translator-test
+add_executable(dalinira-browser-page-translator-test
   browser/native/tests/page_translator_test.cpp
   browser/native/translate/page_translator.cpp
   browser/native/translate/translate_service.cpp
@@ -1055,20 +1169,20 @@ add_executable(ardali-browser-page-translator-test
   browser/native/passwords/credential_vault.cpp
   browser/native/passwords/credential_vault_manager.cpp
   browser/native/core/security_utils.cpp)
-target_link_libraries(ardali-browser-page-translator-test PRIVATE
+target_link_libraries(dalinira-browser-page-translator-test PRIVATE
   Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Concurrent Qt6::DBus OpenSSL::Crypto)
-add_test(NAME browser-page-translator COMMAND ardali-browser-page-translator-test)
+add_test(NAME browser-page-translator COMMAND dalinira-browser-page-translator-test)
 set_tests_properties(browser-page-translator PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 
-add_executable(ardali-browser-state-transfer-test
+add_executable(dalinira-browser-state-transfer-test
   browser/native/tests/state_transfer_test.cpp)
-target_link_libraries(ardali-browser-state-transfer-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
-add_test(NAME browser-state-transfer COMMAND ardali-browser-state-transfer-test)
+target_link_libraries(dalinira-browser-state-transfer-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
+add_test(NAME browser-state-transfer COMMAND dalinira-browser-state-transfer-test)
 set_tests_properties(browser-state-transfer PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
 
-add_executable(ardali-browser-translate-service-test
+add_executable(dalinira-browser-translate-service-test
   browser/native/tests/translate_service_test.cpp
   browser/native/translate/translate_service.cpp
   browser/native/translate/translation_secret_store.cpp
@@ -1081,28 +1195,29 @@ add_executable(ardali-browser-translate-service-test
   browser/native/passwords/credential_vault.cpp
   browser/native/passwords/credential_vault_manager.cpp
   browser/native/core/security_utils.cpp)
-target_link_libraries(ardali-browser-translate-service-test PRIVATE
+target_link_libraries(dalinira-browser-translate-service-test PRIVATE
   Qt6::Core Qt6::Network Qt6::Concurrent Qt6::DBus OpenSSL::Crypto)
-add_test(NAME browser-translate-service COMMAND ardali-browser-translate-service-test)
+add_test(NAME browser-translate-service COMMAND dalinira-browser-translate-service-test)
 
-add_executable(ardali-browser-yt-dlp-fixture-v1 browser/native/tests/yt_dlp_version_fixture.cpp)
-target_compile_definitions(ardali-browser-yt-dlp-fixture-v1 PRIVATE ARDALI_YTDLP_FIXTURE_VERSION="2099.01.01")
-add_executable(ardali-browser-yt-dlp-fixture-v2 browser/native/tests/yt_dlp_version_fixture.cpp)
-target_compile_definitions(ardali-browser-yt-dlp-fixture-v2 PRIVATE ARDALI_YTDLP_FIXTURE_VERSION="2099.02.02")
-add_executable(ardali-browser-yt-dlp-update-manager-test
+add_executable(dalinira-browser-yt-dlp-fixture-v1 browser/native/tests/yt_dlp_version_fixture.cpp)
+target_compile_definitions(dalinira-browser-yt-dlp-fixture-v1 PRIVATE DALINIRA_YTDLP_FIXTURE_VERSION="2099.01.01")
+add_executable(dalinira-browser-yt-dlp-fixture-v2 browser/native/tests/yt_dlp_version_fixture.cpp)
+target_compile_definitions(dalinira-browser-yt-dlp-fixture-v2 PRIVATE DALINIRA_YTDLP_FIXTURE_VERSION="2099.02.02")
+add_executable(dalinira-browser-yt-dlp-update-manager-test
   browser/native/tests/yt_dlp_update_manager_test.cpp
   browser/native/downloads/yt_dlp_update_manager.cpp
   browser/native/downloads/media_download_service.cpp
+  browser/native/core/adult_content_protection.cpp
   browser/native/core/security_utils.cpp)
-target_link_libraries(ardali-browser-yt-dlp-update-manager-test PRIVATE Qt6::Core Qt6::Network)
-add_test(NAME browser-yt-dlp-update-manager COMMAND ardali-browser-yt-dlp-update-manager-test
-  $<TARGET_FILE:ardali-browser-yt-dlp-fixture-v1>
-  $<TARGET_FILE:ardali-browser-yt-dlp-fixture-v2>)
-add_dependencies(ardali-browser-yt-dlp-update-manager-test
-  ardali-browser-yt-dlp-fixture-v1 ardali-browser-yt-dlp-fixture-v2)
+target_link_libraries(dalinira-browser-yt-dlp-update-manager-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME browser-yt-dlp-update-manager COMMAND dalinira-browser-yt-dlp-update-manager-test
+  $<TARGET_FILE:dalinira-browser-yt-dlp-fixture-v1>
+  $<TARGET_FILE:dalinira-browser-yt-dlp-fixture-v2>)
+add_dependencies(dalinira-browser-yt-dlp-update-manager-test
+  dalinira-browser-yt-dlp-fixture-v1 dalinira-browser-yt-dlp-fixture-v2)
 set_tests_properties(browser-yt-dlp-update-manager PROPERTIES TIMEOUT 90)
 
-add_executable(ardali-browser-adaptive-audio-dsp-test
+add_executable(dalinira-browser-adaptive-audio-dsp-test
   browser/native/tests/adaptive_audio_dsp_test.cpp
   browser/native/audio/audio_platform_policy.cpp
   browser/native/audio/web_audio_effects_controller.cpp
@@ -1112,68 +1227,68 @@ add_executable(ardali-browser-adaptive-audio-dsp-test
   browser/native/desktop_tabs/tab_manager.cpp
   browser/native/desktop_tabs/tab_performance_manager.cpp
   browser/native/desktop_tabs/system_memory_pressure_monitor.cpp)
-target_link_libraries(ardali-browser-adaptive-audio-dsp-test PRIVATE
+target_link_libraries(dalinira-browser-adaptive-audio-dsp-test PRIVATE
   Qt6::Core Qt6::Gui Qt6::Widgets Qt6::WebEngineWidgets Qt6::Svg)
-target_compile_definitions(ardali-browser-adaptive-audio-dsp-test PRIVATE
-  ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH="dali/web-output-audiophile.generated.js"
-  ARDALI_WEB_EQ32_DALI_MODULE_RELATIVE_PATH="dali/web-equalizer-32.generated.js"
-  ARDALI_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH="dali/web-dynamic-compressor.generated.js"
-  ARDALI_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH="dali/web-limiter.generated.js"
-  ARDALI_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH="dali/web-bass-enhancer.generated.js"
-  ARDALI_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js")
-add_dependencies(ardali-browser-adaptive-audio-dsp-test ardali-web-output-dali ardali-eq-presets-runtime)
-add_test(NAME browser-adaptive-audio-dsp COMMAND ardali-browser-adaptive-audio-dsp-test)
+target_compile_definitions(dalinira-browser-adaptive-audio-dsp-test PRIVATE
+  DALINIRA_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH="dali/web-output-audiophile.generated.js"
+  DALINIRA_WEB_EQ32_DALI_MODULE_RELATIVE_PATH="dali/web-equalizer-32.generated.js"
+  DALINIRA_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH="dali/web-dynamic-compressor.generated.js"
+  DALINIRA_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH="dali/web-limiter.generated.js"
+  DALINIRA_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH="dali/web-bass-enhancer.generated.js"
+  DALINIRA_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js")
+add_dependencies(dalinira-browser-adaptive-audio-dsp-test dalinira-web-output-dali dalinira-eq-presets-runtime)
+add_test(NAME browser-adaptive-audio-dsp COMMAND dalinira-browser-adaptive-audio-dsp-test)
 set_tests_properties(browser-adaptive-audio-dsp PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 
-add_executable(ardali-browser-blocker-test
-  browser/native/tests/ardali_blocker_test.cpp
+add_executable(dalinira-browser-blocker-test
+  browser/native/tests/dalinira_blocker_test.cpp
   ${BLOCKER_SOURCES}
   browser/native/newtab/new_tab_html.cpp
   browser/native/core/search_engine_definition.cpp
   browser/native/core/security_utils.cpp)
-target_link_libraries(ardali-browser-blocker-test PRIVATE
+target_link_libraries(dalinira-browser-blocker-test PRIVATE
   Qt6::Core Qt6::Gui Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Concurrent Qt6::Svg)
-target_compile_definitions(ardali-browser-blocker-test PRIVATE
-  ARDALI_BROWSER_VERSION="${PROJECT_VERSION}")
-add_test(NAME browser-blocker COMMAND ardali-browser-blocker-test)
+target_compile_definitions(dalinira-browser-blocker-test PRIVATE
+  DALINIRA_BROWSER_VERSION="${PROJECT_VERSION}")
+add_test(NAME browser-blocker COMMAND dalinira-browser-blocker-test)
 set_tests_properties(browser-blocker PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
 
 # These two UI tests intentionally use the application source set because the
 # Settings and profile objects coordinate multiple subsystem hooks.
-add_executable(ardali-browser-performance-settings-test
-  ${ARDALI_BROWSER_FULL_SOURCES}
+add_executable(dalinira-browser-performance-settings-test
+  ${DALINIRA_BROWSER_FULL_SOURCES}
   browser/native/tests/performance_settings_test.cpp)
-target_link_libraries(ardali-browser-performance-settings-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
-if(ARDALI_BROWSER_FULL_DEFS)
-  target_compile_definitions(ardali-browser-performance-settings-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+target_link_libraries(dalinira-browser-performance-settings-test PRIVATE ${DALINIRA_BROWSER_FULL_LIBS})
+if(DALINIRA_BROWSER_FULL_DEFS)
+  target_compile_definitions(dalinira-browser-performance-settings-test PRIVATE ${DALINIRA_BROWSER_FULL_DEFS})
 endif()
-add_dependencies(ardali-browser-performance-settings-test ardali-browser-policy ardali-web-output-dali)
-add_test(NAME browser-performance-settings COMMAND ardali-browser-performance-settings-test)
+add_dependencies(dalinira-browser-performance-settings-test dalinira-browser-policy dalinira-web-output-dali)
+add_test(NAME browser-performance-settings COMMAND dalinira-browser-performance-settings-test)
 set_tests_properties(browser-performance-settings PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
 
-add_executable(ardali-browser-tab-audible-fullscreen-test
-  ${ARDALI_BROWSER_FULL_SOURCES}
+add_executable(dalinira-browser-tab-audible-fullscreen-test
+  ${DALINIRA_BROWSER_FULL_SOURCES}
   browser/native/tests/tab_audible_and_fullscreen_test.cpp)
-target_link_libraries(ardali-browser-tab-audible-fullscreen-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
-if(ARDALI_BROWSER_FULL_DEFS)
-  target_compile_definitions(ardali-browser-tab-audible-fullscreen-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+target_link_libraries(dalinira-browser-tab-audible-fullscreen-test PRIVATE ${DALINIRA_BROWSER_FULL_LIBS})
+if(DALINIRA_BROWSER_FULL_DEFS)
+  target_compile_definitions(dalinira-browser-tab-audible-fullscreen-test PRIVATE ${DALINIRA_BROWSER_FULL_DEFS})
 endif()
-add_dependencies(ardali-browser-tab-audible-fullscreen-test ardali-browser-policy ardali-web-output-dali)
-add_test(NAME browser-tab-audible-fullscreen COMMAND ardali-browser-tab-audible-fullscreen-test)
+add_dependencies(dalinira-browser-tab-audible-fullscreen-test dalinira-browser-policy dalinira-web-output-dali)
+add_test(NAME browser-tab-audible-fullscreen COMMAND dalinira-browser-tab-audible-fullscreen-test)
 set_tests_properties(browser-tab-audible-fullscreen PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
 
 # Keep assertions enabled in Release and apply the same conservative warning
-# coverage used by the application to all ArDali-owned test executables.
-get_property(ARDALI_ALL_TEST_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
-foreach(ARDALI_TEST_TARGET IN LISTS ARDALI_ALL_TEST_TARGETS)
-  if(ARDALI_TEST_TARGET MATCHES "[-_]test$")
-    target_compile_options(${ARDALI_TEST_TARGET} PRIVATE -UNDEBUG)
+# coverage used by the application to all DaliNira-owned test executables.
+get_property(DALINIRA_ALL_TEST_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(DALINIRA_TEST_TARGET IN LISTS DALINIRA_ALL_TEST_TARGETS)
+  if(DALINIRA_TEST_TARGET MATCHES "[-_]test$")
+    target_compile_options(${DALINIRA_TEST_TARGET} PRIVATE -UNDEBUG)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-      target_compile_options(${ARDALI_TEST_TARGET} PRIVATE -Wall -Wextra -Wno-unused-parameter)
+      target_compile_options(${DALINIRA_TEST_TARGET} PRIVATE -Wall -Wextra -Wno-unused-parameter)
     endif()
   endif()
 endforeach()
@@ -1186,7 +1301,7 @@ set_tests_properties(
   browser-web-audio-effects browser-adaptive-audio-dsp
   PROPERTIES LABELS "audio;webengine")
 set_tests_properties(
-  browser-runtime-feature-integration ardali-phase22d-integration
+  browser-runtime-feature-integration dalinira-phase22d-integration
   browser-site-permission browser-context-menu browser-step5-essential-features
   browser-page-translator browser-state-transfer browser-tab-audible-fullscreen
   PROPERTIES LABELS "integration;webengine")
@@ -1198,7 +1313,7 @@ set_property(TEST
   browser-web-audio-effects browser-password-autofill-test
   browser-runtime-feature-integration browser-phase2a-policy
   browser-tab-scheduler-retry browser-tab-hover-card smart_omnibox_phase2_1_test
-  ardali-phase22d ardali-phase22d-integration browser-site-permission
+  dalinira-phase22d dalinira-phase22d-integration browser-site-permission
   browser-context-menu browser-step5-essential-features browser-tab-throbber
   browser-tab-manager browser-internal-tab browser-tab-performance-manager
   browser-page-translator browser-state-transfer browser-adaptive-audio-dsp
@@ -1210,10 +1325,10 @@ set_property(TEST
 # -------------------------------------------------------------
 include(GNUInstallDirs)
 
-set(ARDALI_RUNTIME_INSTALL_DIR "lib/ardali-browser")
+set(DALINIRA_RUNTIME_INSTALL_DIR "lib/dalinira-browser")
 
-install(TARGETS ardali-browser
-  RUNTIME DESTINATION ${ARDALI_RUNTIME_INSTALL_DIR}
+install(TARGETS dalinira-browser
+  RUNTIME DESTINATION ${DALINIRA_RUNTIME_INSTALL_DIR}
 )
 
 # The Web Audio engine is compiled from the checked-in .dl sources.  Keep the
@@ -1228,74 +1343,80 @@ install(FILES
   ${DALI_WEB_LIMITER_MODULE}
   ${DALI_WEB_BASS_ENHANCER_MODULE}
   ${DALI_WEB_AUTO_GAIN_MODULE}
-  DESTINATION ${ARDALI_RUNTIME_INSTALL_DIR}/dali
+  DESTINATION ${DALINIRA_RUNTIME_INSTALL_DIR}/dali
 )
 
 # The policy follows the same executable-relative lookup used by main.cpp.
 install(FILES ${DALI_POLICY_JSON}
-  DESTINATION ${ARDALI_RUNTIME_INSTALL_DIR}
+  DESTINATION ${DALINIRA_RUNTIME_INSTALL_DIR}
+)
+
+install(FILES
+  ${DALINIRA_ADULT_DOMAINS_SNAPSHOT}
+  ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/privacy/adult_allowlist.txt
+  DESTINATION ${DALINIRA_RUNTIME_INSTALL_DIR}/resources/privacy
 )
 
 install(DIRECTORY i18n
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/ardali-browser
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/dalinira-browser
 )
 
-# Runtime images and SVG controls served by ardali://newtab.
+# Runtime images and SVG controls served by dalinira://newtab.
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/assets/new-tab/
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/ardali-browser/new-tab
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/dalinira-browser/new-tab
 )
 
-if(TARGET ardali-webengine-process)
-  install(TARGETS ardali-webengine-process
-    RUNTIME DESTINATION ${ARDALI_RUNTIME_INSTALL_DIR}
+if(TARGET dalinira-webengine-process)
+  install(TARGETS dalinira-webengine-process
+    RUNTIME DESTINATION ${DALINIRA_RUNTIME_INSTALL_DIR}
   )
 endif()
 
 configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/linux/ardali-browser.in
-  ${CMAKE_CURRENT_BINARY_DIR}/ardali-browser-launcher
+  ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/linux/dalinira-browser.in
+  ${CMAKE_CURRENT_BINARY_DIR}/dalinira-browser-launcher
   @ONLY
 )
-install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/ardali-browser-launcher
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/dalinira-browser-launcher
   DESTINATION bin
-  RENAME ardali-browser
+  RENAME dalinira-browser
 )
 
 configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/linux/ardali.desktop.in
-  ${CMAKE_CURRENT_BINARY_DIR}/ardali.desktop
+  ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/linux/dalinira.desktop.in
+  ${CMAKE_CURRENT_BINARY_DIR}/dalinira.desktop
   @ONLY
 )
 
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ardali.desktop
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/dalinira.desktop
   DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
 
 # Application icons
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-16.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/16x16/apps RENAME ardali.png)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-24.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/24x24/apps RENAME ardali.png)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-32.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps RENAME ardali.png)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-48.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/48x48/apps RENAME ardali.png)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-64.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/64x64/apps RENAME ardali.png)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-128.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps RENAME ardali.png)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-256.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps RENAME ardali.png)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-512.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps RENAME ardali.png)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/1024x1024/apps RENAME ardali.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/dalinira-browser-16.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/16x16/apps RENAME dalinira.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/dalinira-browser-24.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/24x24/apps RENAME dalinira.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/dalinira-browser-32.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps RENAME dalinira.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/dalinira-browser-48.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/48x48/apps RENAME dalinira.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/dalinira-browser-64.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/64x64/apps RENAME dalinira.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/dalinira-browser-128.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps RENAME dalinira.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/dalinira-browser-256.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps RENAME dalinira.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/dalinira-browser-512.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps RENAME dalinira.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/dalinira-browser.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/1024x1024/apps RENAME dalinira.png)
 
 # AutoEQ presets & adblock resources
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/eq-presets
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/ardali-browser
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/dalinira-browser
 )
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/adblock
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/ardali-browser/resources
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/dalinira-browser/resources
 )

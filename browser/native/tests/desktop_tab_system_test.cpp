@@ -19,45 +19,45 @@
 #include "desktop_tabs/tab_strip_widget.h"
 #include "desktop_tabs/tab_window_registry.h"
 
-using namespace ardali::desktop_tabs;
+using namespace dalinira::desktop_tabs;
 
 static void testTabAppearanceAndPersistence() {
   std::printf("[TEST] Starting testTabAppearanceAndPersistence...\n");
 
   assert(tabStyleFromPreference(QStringLiteral("chrome_curved")) ==
          TabStyle::ChromeCurved);
-  assert(tabStyleFromPreference(QStringLiteral("ARDALI_SIGNATURE")) ==
-         TabStyle::ArDaliSignature);
+  assert(tabStyleFromPreference(QStringLiteral("DALINIRA_SIGNATURE")) ==
+         TabStyle::DaliNiraSignature);
   assert(tabStyleFromPreference(QStringLiteral("modern_pill")) ==
          TabStyle::FloatingPill);
-  assert(tabStyleFromPreference(QStringLiteral("ardali_connected")) ==
-         TabStyle::ArDaliConnected);
+  assert(tabStyleFromPreference(QStringLiteral("dalinira_connected")) ==
+         TabStyle::DaliNiraConnected);
   assert(tabStyleFromPreference(QStringLiteral("connected")) ==
-         TabStyle::ArDaliConnected);
-  assert(tabStyleFromPreference(QStringLiteral("ardali_baglantili")) ==
-         TabStyle::ArDaliConnected);
+         TabStyle::DaliNiraConnected);
+  assert(tabStyleFromPreference(QStringLiteral("dalinira_baglantili")) ==
+         TabStyle::DaliNiraConnected);
   assert(tabStyleFromPreference(QStringLiteral("standart")) ==
          TabStyle::ChromeCurved);
   assert(tabStyleFromPreference(QStringLiteral("standard")) ==
          TabStyle::ChromeCurved);
   assert(tabStyleFromPreference(QStringLiteral("")) ==
-         TabStyle::ArDaliConnected);
+         TabStyle::DaliNiraConnected);
   assert(tabStyleFromPreference(QStringLiteral("unknown_value")) ==
-         TabStyle::ArDaliConnected);
+         TabStyle::DaliNiraConnected);
   assert(tabStylePreferenceValue(TabStyle::FloatingPill) ==
          QStringLiteral("floating_pill"));
-  assert(tabStylePreferenceValue(TabStyle::ArDaliConnected) ==
-         QStringLiteral("ardali_connected"));
+  assert(tabStylePreferenceValue(TabStyle::DaliNiraConnected) ==
+         QStringLiteral("dalinira_connected"));
 
   const auto &chrome = tabAppearance(TabStyle::ChromeCurved);
-  const auto &ardali = tabAppearance(TabStyle::ArDaliSignature);
+  const auto &dalinira = tabAppearance(TabStyle::DaliNiraSignature);
   const auto &pill = tabAppearance(TabStyle::FloatingPill);
-  const auto &connected = tabAppearance(TabStyle::ArDaliConnected);
+  const auto &connected = tabAppearance(TabStyle::DaliNiraConnected);
   assert(chrome.layout.tabHeight == 40);
   assert(chrome.layout.preferredTabWidth == 240);
   assert(chrome.layout.faviconSize == 18);
   assert(chrome.connectsToToolbar);
-  assert(ardali.paintsSignatureAccent);
+  assert(dalinira.paintsSignatureAccent);
   assert(!pill.connectsToToolbar);
   assert(!connected.connectsToToolbar);
   assert(connected.layout.preferredTabWidth == 236);
@@ -68,7 +68,7 @@ static void testTabAppearanceAndPersistence() {
   const QPainterPath pillPath = tabSurfacePath(
       bounds, 40, TabStyle::FloatingPill, true);
   const QPainterPath connectedPath = tabSurfacePath(
-      bounds, 40, TabStyle::ArDaliConnected, true);
+      bounds, 40, TabStyle::DaliNiraConnected, true);
   assert(chromePath.boundingRect().left() < bounds.left());
   assert(chromePath.boundingRect().bottom() > bounds.bottom());
   assert(pillPath.boundingRect().left() > bounds.left());
@@ -77,11 +77,11 @@ static void testTabAppearanceAndPersistence() {
   assert(connectedPath.boundingRect().right() > bounds.right() - 4.0);
 
   QSettings settings;
-  // 1. Fresh profile test: no saved preference -> defaults to ArDaliConnected
+  // 1. Fresh profile test: no saved preference -> defaults to DaliNiraConnected
   settings.remove(QStringLiteral("browser/tabStyle"));
   settings.sync();
   TabStripWidget freshStrip;
-  assert(freshStrip.tabStyle() == TabStyle::ArDaliConnected);
+  assert(freshStrip.tabStyle() == TabStyle::DaliNiraConnected);
 
   // 2. Select Standart ("chrome_curved") -> simulated restart preserves Standart
   settings.setValue(QStringLiteral("browser/tabStyle"),
@@ -107,19 +107,19 @@ static void testTabAppearanceAndPersistence() {
          pill.layout.preferredTabWidth);
 
   settings.setValue(QStringLiteral("browser/tabStyle"),
-                    QStringLiteral("ardali_signature"));
+                    QStringLiteral("dalinira_signature"));
   settings.sync();
   firstWindowStrip.loadSettings();
-  assert(firstWindowStrip.tabStyle() == TabStyle::ArDaliSignature);
+  assert(firstWindowStrip.tabStyle() == TabStyle::DaliNiraSignature);
 
   settings.setValue(QStringLiteral("browser/tabStyle"),
-                    QStringLiteral("ardali_connected"));
+                    QStringLiteral("dalinira_connected"));
   settings.sync();
   firstWindowStrip.loadSettings();
-  assert(firstWindowStrip.tabStyle() == TabStyle::ArDaliConnected);
+  assert(firstWindowStrip.tabStyle() == TabStyle::DaliNiraConnected);
 
   TabStripWidget newWindowStrip;
-  assert(newWindowStrip.tabStyle() == TabStyle::ArDaliConnected);
+  assert(newWindowStrip.tabStyle() == TabStyle::DaliNiraConnected);
 
   QWidget firstWindow;
   QWidget secondWindow;
@@ -170,25 +170,25 @@ static void testDistinctPaintingHoverAndNewTabHitArea() {
   strip.setCurrentIndex(0);
 
   const QImage chromeImage = renderTabStrip(strip);
-  strip.setTabStyle(TabStyle::ArDaliSignature);
-  const QImage ardaliImage = renderTabStrip(strip);
+  strip.setTabStyle(TabStyle::DaliNiraSignature);
+  const QImage daliniraImage = renderTabStrip(strip);
   strip.setTabStyle(TabStyle::FloatingPill);
   const QImage pillImage = renderTabStrip(strip);
-  strip.setTabStyle(TabStyle::ArDaliConnected);
+  strip.setTabStyle(TabStyle::DaliNiraConnected);
   const QImage connectedImage = renderTabStrip(strip);
-  assert(chromeImage != ardaliImage);
+  assert(chromeImage != daliniraImage);
   assert(chromeImage != pillImage);
   assert(chromeImage != connectedImage);
-  assert(ardaliImage != pillImage);
-  assert(ardaliImage != connectedImage);
+  assert(daliniraImage != pillImage);
+  assert(daliniraImage != connectedImage);
   assert(pillImage != connectedImage);
   const QString snapshotDirectory = qEnvironmentVariable(
-      "ARDALI_TAB_SNAPSHOT_DIR");
+      "DALINIRA_TAB_SNAPSHOT_DIR");
   if (!snapshotDirectory.isEmpty()) {
     chromeImage.save(snapshotDirectory + QStringLiteral("/chrome-curved.png"));
-    ardaliImage.save(snapshotDirectory + QStringLiteral("/ardali-signature.png"));
+    daliniraImage.save(snapshotDirectory + QStringLiteral("/dalinira-signature.png"));
     pillImage.save(snapshotDirectory + QStringLiteral("/floating-pill.png"));
-    connectedImage.save(snapshotDirectory + QStringLiteral("/ardali-connected.png"));
+    connectedImage.save(snapshotDirectory + QStringLiteral("/dalinira-connected.png"));
   }
 
   strip.setTabStyle(TabStyle::ChromeCurved);
@@ -470,18 +470,18 @@ static void testTabStripWidget() {
   // Add tabs
   strip.addTab(101, QStringLiteral("Google"));
   strip.addTab(102, QStringLiteral("GitHub"));
-  strip.addTab(103, QStringLiteral("ArDali"));
+  strip.addTab(103, QStringLiteral("DaliNira"));
 
   assert(strip.count() == 3);
   assert(strip.currentIndex() == 0);
   assert(strip.tabText(0) == QStringLiteral("Google"));
   assert(strip.tabText(1) == QStringLiteral("GitHub"));
-  assert(strip.tabText(2) == QStringLiteral("ArDali"));
+  assert(strip.tabText(2) == QStringLiteral("DaliNira"));
 
   // Move tab
   strip.moveTab(0, 2);
   assert(strip.tabText(0) == QStringLiteral("GitHub"));
-  assert(strip.tabText(1) == QStringLiteral("ArDali"));
+  assert(strip.tabText(1) == QStringLiteral("DaliNira"));
   assert(strip.tabText(2) == QStringLiteral("Google"));
 
   // Pinned tab
@@ -542,11 +542,11 @@ static void testTabWindowRegistry() {
 
   // Capture shells and incompatible profiles are never attach targets.
   const QPoint gpos2 = strip2.mapToGlobal(QPoint(100, 15));
-  win2.setProperty("ardaliDragCaptureShell", true);
+  win2.setProperty("daliniraDragCaptureShell", true);
   assert(registry.findTargetAt(gpos2, &win1).window != &win2);
-  win2.setProperty("ardaliDragCaptureShell", false);
-  win1.setProperty("ardaliTabProfile", QVariant::fromValue<qulonglong>(1));
-  win2.setProperty("ardaliTabProfile", QVariant::fromValue<qulonglong>(2));
+  win2.setProperty("daliniraDragCaptureShell", false);
+  win1.setProperty("daliniraTabProfile", QVariant::fromValue<qulonglong>(1));
+  win2.setProperty("daliniraTabProfile", QVariant::fromValue<qulonglong>(2));
   assert(registry.findTargetAt(gpos2, &win1).window != &win2);
 
   registry.unregisterWindow(&win1);
@@ -748,7 +748,7 @@ static void testCursorCleanupAndAnimationMetrics() {
   auto &controller = TabDragController::instance();
   QWidget detachedShell;
   detachedShell.setGeometry(0, 0, 800, 600);
-  detachedShell.setProperty("ardaliDragCaptureShell", true);
+  detachedShell.setProperty("daliniraDragCaptureShell", true);
   auto *shellStrip = new TabStripWidget(&detachedShell);
   shellStrip->setGeometry(0, 0, 800, 34);
 
@@ -925,7 +925,7 @@ static void testDetachAnchorAndClosedHandCursor() {
   // an explicit geometry and a tab strip so tabRect(0) is available.
   QWidget detachedShell;
   detachedShell.setGeometry(0, 0, 600, 450);  // ~75% of 800x600
-  detachedShell.setProperty("ardaliDragCaptureShell", true);
+  detachedShell.setProperty("daliniraDragCaptureShell", true);
   auto *shellStrip = new TabStripWidget(&detachedShell);
   shellStrip->setGeometry(0, 0, 600, 34);
   shellStrip->addTab(501, QStringLiteral("Tab A"));
@@ -1075,7 +1075,7 @@ int main(int argc, char *argv[]) {
 
   QTemporaryDir settingsDirectory;
   assert(settingsDirectory.isValid());
-  QCoreApplication::setOrganizationName(QStringLiteral("ArDaliTest"));
+  QCoreApplication::setOrganizationName(QStringLiteral("DaliNiraTest"));
   QCoreApplication::setApplicationName(QStringLiteral("DesktopTabSystem"));
   QSettings::setDefaultFormat(QSettings::IniFormat);
   QSettings::setPath(QSettings::IniFormat, QSettings::UserScope,

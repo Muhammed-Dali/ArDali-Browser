@@ -74,7 +74,7 @@ bool aesGcm(bool encrypt, const QByteArray &key, const QByteArray &nonce, const 
   } while (false);
   EVP_CIPHER_CTX_free(ctx); return ok;
 }
-QString recordAad(const QString &id) { return QStringLiteral("ardali-vault-record:") + id; }
+QString recordAad(const QString &id) { return QStringLiteral("dalinira-vault-record:") + id; }
 }
 
 CredentialVault::CredentialVault(const QString &dataDirectory, QObject *parent, const QString &storageId)
@@ -429,8 +429,8 @@ bool CredentialVault::create(const QString &masterPassword) {
   }
 
   const QByteArray aad = (schemaVersion_ >= 3 && deviceBinding_ == QLatin1String("secret-service"))
-      ? QByteArrayLiteral("ardali-vault-key-v3")
-      : QByteArrayLiteral("ardali-vault-key-v2");
+      ? QByteArrayLiteral("dalinira-vault-key-v3")
+      : QByteArrayLiteral("dalinira-vault-key-v2");
 
   if (!aesGcm(true, wrapKey, wrappedNonce_, rawKey, aad, &wrappedKey_, &wrappedTag_)) {
     secureClear(&wrapKey);
@@ -524,8 +524,8 @@ bool CredentialVault::unlock(const QString &masterPassword) {
 
   QByteArray wrapKey, key;
   const QByteArray aad = (schemaVersion_ >= 3 && deviceBinding_ == QLatin1String("secret-service"))
-      ? QByteArrayLiteral("ardali-vault-key-v3")
-      : QByteArrayLiteral("ardali-vault-key-v2");
+      ? QByteArrayLiteral("dalinira-vault-key-v3")
+      : QByteArrayLiteral("dalinira-vault-key-v2");
 
   const bool ok = deriveKey(masterPassword, salt_, deviceSecret, &wrapKey) &&
                   aesGcm(false, wrapKey, wrappedNonce_, wrappedKey_, aad, &key, &wrappedTag_) &&
@@ -561,7 +561,7 @@ bool CredentialVault::unlock(const QString &masterPassword) {
       QByteArray newWrapKey, newNonce, newCipher, newTag;
       if (randomBytes(&newNonce, kNonceBytes) &&
           deriveKey(masterPassword, salt_, newDevSecret, &newWrapKey) &&
-          aesGcm(true, newWrapKey, newNonce, dataKey_, QByteArrayLiteral("ardali-vault-key-v3"), &newCipher, &newTag)) {
+          aesGcm(true, newWrapKey, newNonce, dataKey_, QByteArrayLiteral("dalinira-vault-key-v3"), &newCipher, &newTag)) {
         wrappedNonce_ = newNonce;
         wrappedKey_ = newCipher;
         wrappedTag_ = newTag;
@@ -735,8 +735,8 @@ bool CredentialVault::changeMasterPassword(const QString &currentPassword, const
   }
 
   const QByteArray aad = (schemaVersion_ >= 3 && deviceBinding_ == QLatin1String("secret-service"))
-      ? QByteArrayLiteral("ardali-vault-key-v3")
-      : QByteArrayLiteral("ardali-vault-key-v2");
+      ? QByteArrayLiteral("dalinira-vault-key-v3")
+      : QByteArrayLiteral("dalinira-vault-key-v2");
 
   QByteArray oldWrap, verifiedKey, newSalt, newWrap, newNonce, newCipher, newTag;
   const bool verified = deriveKey(currentPassword, salt_, devSecret, &oldWrap)

@@ -14,7 +14,7 @@
 #include <QStyle>
 #include <vector>
 
-using namespace ardali::settings_ui;
+using namespace dalinira::settings_ui;
 
 QWidget *SettingsPage::createPerformanceSection() {
   Section section = makeSection(
@@ -35,22 +35,22 @@ QWidget *SettingsPage::createPerformanceSection() {
   cardsLayout->setSpacing(10);
 
   struct ModeCardInfo {
-    ardali::PerformancePolicyMode mode;
+    dalinira::PerformancePolicyMode mode;
     QString title;
     QString badge;
     QString description;
   };
 
   const std::vector<ModeCardInfo> modeInfos = {
-    { ardali::PerformancePolicyMode::Balanced,
+    { dalinira::PerformancePolicyMode::Balanced,
       QStringLiteral("Dengeli"),
       QStringLiteral("Önerilen"),
       QStringLiteral("Performans ve bellek kullanımı arasında dengeli bir deneyim sağlar.") },
-    { ardali::PerformancePolicyMode::MemorySaver,
+    { dalinira::PerformancePolicyMode::MemorySaver,
       QStringLiteral("Bellek Tasarrufu"),
       QString(),
       QStringLiteral("Kullanmadığınız sekmelerin kaynak kullanımını daha erken azaltarak daha fazla bellek boşaltır.") },
-    { ardali::PerformancePolicyMode::MaximumPerformance,
+    { dalinira::PerformancePolicyMode::MaximumPerformance,
       QStringLiteral("Maksimum Performans"),
       QString(),
       QStringLiteral("Sekmeleri daha uzun süre etkin tutarak hızlı geçişlere öncelik verir. Daha fazla bellek kullanabilir.") }
@@ -61,12 +61,12 @@ QWidget *SettingsPage::createPerformanceSection() {
 
   QSettings preferences;
   const QString initialModeStr = preferences.value(QStringLiteral("performance/policyMode"), QStringLiteral("balanced")).toString().toLower();
-  ardali::PerformancePolicyMode currentMode = ardali::PerformancePolicyMode::Balanced;
+  dalinira::PerformancePolicyMode currentMode = dalinira::PerformancePolicyMode::Balanced;
   if (perfManager) {
     currentMode = perfManager->policyMode();
   } else {
-    if (initialModeStr == QLatin1String("memory_saver")) currentMode = ardali::PerformancePolicyMode::MemorySaver;
-    else if (initialModeStr == QLatin1String("maximum_performance")) currentMode = ardali::PerformancePolicyMode::MaximumPerformance;
+    if (initialModeStr == QLatin1String("memory_saver")) currentMode = dalinira::PerformancePolicyMode::MemorySaver;
+    else if (initialModeStr == QLatin1String("maximum_performance")) currentMode = dalinira::PerformancePolicyMode::MaximumPerformance;
   }
 
   auto *btnGroup = new QButtonGroup(cardsContainer);
@@ -141,9 +141,9 @@ QWidget *SettingsPage::createPerformanceSection() {
     } else {
       QSettings s;
       switch (selectedMode) {
-        case ardali::PerformancePolicyMode::Balanced: s.setValue(QStringLiteral("performance/policyMode"), QStringLiteral("balanced")); break;
-        case ardali::PerformancePolicyMode::MemorySaver: s.setValue(QStringLiteral("performance/policyMode"), QStringLiteral("memory_saver")); break;
-        case ardali::PerformancePolicyMode::MaximumPerformance: s.setValue(QStringLiteral("performance/policyMode"), QStringLiteral("maximum_performance")); break;
+        case dalinira::PerformancePolicyMode::Balanced: s.setValue(QStringLiteral("performance/policyMode"), QStringLiteral("balanced")); break;
+        case dalinira::PerformancePolicyMode::MemorySaver: s.setValue(QStringLiteral("performance/policyMode"), QStringLiteral("memory_saver")); break;
+        case dalinira::PerformancePolicyMode::MaximumPerformance: s.setValue(QStringLiteral("performance/policyMode"), QStringLiteral("maximum_performance")); break;
       }
     }
   };
@@ -305,7 +305,7 @@ QWidget *SettingsPage::createPerformanceSection() {
       return;
     }
 
-    const QString normalized = ardali::TabPerformanceManager::normalizeSitePattern(raw);
+    const QString normalized = dalinira::TabPerformanceManager::normalizeSitePattern(raw);
     if (normalized.isEmpty() || !normalized.contains(QLatin1Char('.')) || normalized.endsWith(QLatin1Char('.'))) {
       statusMsg->setText(QStringLiteral("Lütfen geçerli bir web sitesi adresi girin."));
       statusMsg->setStyleSheet(QStringLiteral("color: #f28b82; font-size: 12px;"));
@@ -347,22 +347,22 @@ QWidget *SettingsPage::createPerformanceSection() {
   statusLabel->setObjectName(QStringLiteral("settings-memory-status-label"));
 
   auto updateMemoryStatus = [statusLabel, perfManager]() {
-    ardali::MemoryPressureLevel level = ardali::MemoryPressureLevel::Normal;
+    dalinira::MemoryPressureLevel level = dalinira::MemoryPressureLevel::Normal;
     if (perfManager && perfManager->memoryPressureMonitor()) {
       level = perfManager->memoryPressureMonitor()->currentPressureLevel();
     }
     QString text;
     QString color;
     switch (level) {
-      case ardali::MemoryPressureLevel::Critical:
+      case dalinira::MemoryPressureLevel::Critical:
         text = QStringLiteral("Bellek kullanımı çok yüksek");
         color = QStringLiteral("#f28b82");
         break;
-      case ardali::MemoryPressureLevel::Moderate:
+      case dalinira::MemoryPressureLevel::Moderate:
         text = QStringLiteral("Bellek kullanımı yüksek");
         color = QStringLiteral("#fdd663");
         break;
-      case ardali::MemoryPressureLevel::Normal:
+      case dalinira::MemoryPressureLevel::Normal:
       default:
         text = QStringLiteral("Bellek kullanımı normal");
         color = QStringLiteral("#81c995");
@@ -375,8 +375,8 @@ QWidget *SettingsPage::createPerformanceSection() {
   updateMemoryStatus();
 
   if (perfManager && perfManager->memoryPressureMonitor()) {
-    connect(perfManager->memoryPressureMonitor(), &ardali::SystemMemoryPressureMonitor::pressureLevelChanged,
-            statusLabel, [updateMemoryStatus](ardali::MemoryPressureLevel) {
+    connect(perfManager->memoryPressureMonitor(), &dalinira::SystemMemoryPressureMonitor::pressureLevelChanged,
+            statusLabel, [updateMemoryStatus](dalinira::MemoryPressureLevel) {
               updateMemoryStatus();
             });
   }

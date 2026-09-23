@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_DETACHED_TAB_WINDOW_CONTROLLER_H_
-#define ARDALI_DESKTOP_TABS_DETACHED_TAB_WINDOW_CONTROLLER_H_
+#ifndef DALINIRA_DESKTOP_TABS_DETACHED_TAB_WINDOW_CONTROLLER_H_
+#define DALINIRA_DESKTOP_TABS_DETACHED_TAB_WINDOW_CONTROLLER_H_
 
 #include <QObject>
 #include <QPoint>
@@ -12,7 +12,7 @@
 #include "platform/tab_drag_platform.h"
 #include "tab_drag_types.h"
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 class DetachedTabWindowController : public QObject {
   Q_OBJECT
@@ -73,6 +73,6 @@ class DetachedTabWindowController : public QObject {
   int initialTabX_ = 0;
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_DETACHED_TAB_WINDOW_CONTROLLER_H_
+#endif  // DALINIRA_DESKTOP_TABS_DETACHED_TAB_WINDOW_CONTROLLER_H_

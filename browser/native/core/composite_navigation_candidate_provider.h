@@ -10,7 +10,7 @@
 #include "address_input_resolver.h"
 #include "navigation_candidate.h"
 
-namespace ardali::core {
+namespace dalinira::core {
 
 class CompositeNavigationCandidateProvider : public QObject, public INavigationCandidateProvider {
   Q_OBJECT
@@ -32,4 +32,4 @@ class CompositeNavigationCandidateProvider : public QObject, public INavigationC
   QVector<std::shared_ptr<INavigationCandidateProvider>> providers_;
 };
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

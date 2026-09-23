@@ -37,7 +37,7 @@ QVector<SavedTab> SessionStore::load() const {
     const QUrl url = BrowserSecurity::sanitizeUrlForPersistence(QUrl(originalUrl));
     const QString scheme = url.scheme().toLower();
     const bool validScheme = scheme == QStringLiteral("http") || scheme == QStringLiteral("https")
-                          || scheme == QStringLiteral("ardali");
+                          || scheme == QStringLiteral("dalinira");
     if (!url.isValid() || !validScheme || isRuntimeFixtureUrl(url)) {
       storageChanged = true;
       continue;
@@ -96,12 +96,12 @@ bool SessionStore::save(const TabManager &tabs, QObject *ownerWindow, QString *e
     if (!record.capabilities.persistentInSession || record.detached || isRuntimeFixtureUrl(record.url)) continue;
     QUrl targetUrl = record.url;
     if (targetUrl.isEmpty()) {
-      targetUrl = QUrl(QStringLiteral("ardali://newtab/"));
+      targetUrl = QUrl(QStringLiteral("dalinira://newtab/"));
     }
     const QUrl persistentUrl = BrowserSecurity::sanitizeUrlForPersistence(targetUrl);
     const QString scheme = persistentUrl.scheme().toLower();
     const bool validScheme = scheme == QStringLiteral("http") || scheme == QStringLiteral("https")
-                          || scheme == QStringLiteral("ardali");
+                          || scheme == QStringLiteral("dalinira");
     if (!persistentUrl.isValid() || !validScheme || isRuntimeFixtureUrl(persistentUrl)) continue;
 
     QJsonObject tabObj{{"url", persistentUrl.toString(QUrl::FullyEncoded)}, {"title", record.title},

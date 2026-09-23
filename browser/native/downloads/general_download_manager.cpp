@@ -32,7 +32,7 @@
 
 namespace {
 
-Q_LOGGING_CATEGORY(lcDownloadTelemetry, "ardali.download.telemetry", QtWarningMsg)
+Q_LOGGING_CATEGORY(lcDownloadTelemetry, "dalinira.download.telemetry", QtWarningMsg)
 
 constexpr qint64 kParallelThreshold = 8 * 1024 * 1024;
 constexpr int kMaxPartRetries = 3;
@@ -1776,7 +1776,7 @@ void GeneralDownloadManager::cleanupParts(const QUuid &id) {
   const int jobIndex = indexOf(id);
   if (jobIndex >= 0) {
     for (int part = 0; part < 8; ++part) {
-      QFile::remove(jobs_.at(jobIndex).targetPath + QStringLiteral(".ardali-%1.part%2")
+      QFile::remove(jobs_.at(jobIndex).targetPath + QStringLiteral(".dalinira-%1.part%2")
           .arg(id.toString(QUuid::WithoutBraces)).arg(part));
     }
   }
@@ -1841,14 +1841,14 @@ bool GeneralDownloadManager::loadState(const QUuid &id, QVector<Part> *parts, qi
 QString GeneralDownloadManager::tempDownloadPath(const QUuid &id) const {
   const int jobIndex = indexOf(id);
   if (jobIndex < 0) return {};
-  return jobs_.at(jobIndex).targetPath + QStringLiteral(".ardali-%1.download")
+  return jobs_.at(jobIndex).targetPath + QStringLiteral(".dalinira-%1.download")
       .arg(id.toString(QUuid::WithoutBraces));
 }
 
 QString GeneralDownloadManager::statePath(const QUuid &id) const {
   const int jobIndex = indexOf(id);
   if (jobIndex < 0) return {};
-  return jobs_.at(jobIndex).targetPath + QStringLiteral(".ardali-%1.state")
+  return jobs_.at(jobIndex).targetPath + QStringLiteral(".dalinira-%1.state")
       .arg(id.toString(QUuid::WithoutBraces));
 }
 

@@ -4,7 +4,7 @@
 
 #include "domain_normalizer.h"
 
-namespace ardali::core {
+namespace dalinira::core {
 
 HistoryCandidateProvider::HistoryCandidateProvider(
     IBrowserProfileDataProvider *dataProvider,
@@ -201,4 +201,4 @@ std::optional<QUrl> HistoryCandidateProvider::findNavigationCandidate(
   return std::nullopt;
 }
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

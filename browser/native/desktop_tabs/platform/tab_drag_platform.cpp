@@ -10,13 +10,13 @@
 namespace {
 
 [[maybe_unused]] bool diagnosticsEnabled() {
-  return qEnvironmentVariableIntValue("ARDALI_DESKTOP_TAB_DIAGNOSTICS") == 1 ||
-         qEnvironmentVariableIntValue("ARDALI_TAB_DIAGNOSTICS") == 1;
+  return qEnvironmentVariableIntValue("DALINIRA_DESKTOP_TAB_DIAGNOSTICS") == 1 ||
+         qEnvironmentVariableIntValue("DALINIRA_TAB_DIAGNOSTICS") == 1;
 }
 
 }  // namespace
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 // ============================================================
 // X11 backend
@@ -177,4 +177,4 @@ std::unique_ptr<TabDragPlatformBackend> TabDragPlatformBackend::create() {
   return std::make_unique<GenericPlatformBackend>();
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

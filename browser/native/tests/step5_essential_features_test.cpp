@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
   setvbuf(stdout, nullptr, _IONBF, 0);
   setvbuf(stderr, nullptr, _IONBF, 0);
   QApplication app(argc, argv);
-  app.setApplicationName(QStringLiteral("ArDaliStep5Test"));
+  app.setApplicationName(QStringLiteral("DaliNiraStep5Test"));
 
   QTemporaryDir tempDir;
   assert(tempDir.isValid());
@@ -137,24 +137,24 @@ int main(int argc, char **argv) {
     profileService.clearHistory();
     assert(profileService.recentHistory().isEmpty());
 
-    const QUrl url1(QStringLiteral("https://ardali-browser.org/features"));
-    const QUrl url2(QStringLiteral("https://ardali-browser.org/download"));
-    const QUrl url3(QStringLiteral("https://github.com/ardali-browser/core"));
+    const QUrl url1(QStringLiteral("https://dalinira-browser.org/features"));
+    const QUrl url2(QStringLiteral("https://dalinira-browser.org/download"));
+    const QUrl url3(QStringLiteral("https://github.com/dalinira-browser/core"));
 
-    profileService.recordHistory(url1, QStringLiteral("ArDali Features"), true);
-    profileService.recordHistory(url2, QStringLiteral("ArDali Download"), false);
+    profileService.recordHistory(url1, QStringLiteral("DaliNira Features"), true);
+    profileService.recordHistory(url2, QStringLiteral("DaliNira Download"), false);
     profileService.recordHistory(url3, QStringLiteral("GitHub Repository"), true);
 
     const auto allHistory = profileService.recentHistory();
     assert(allHistory.size() == 3);
 
     // Test Multi-token and Partial Search
-    const auto searchMulti = profileService.searchHistory(QStringLiteral("ardali feat"));
+    const auto searchMulti = profileService.searchHistory(QStringLiteral("dalinira feat"));
     assert(searchMulti.size() == 1);
     assert(searchMulti.first().url == url1);
 
-    const auto searchAllArdali = profileService.searchHistory(QStringLiteral("ardali"));
-    assert(searchAllArdali.size() == 3);
+    const auto searchAllDaliNira = profileService.searchHistory(QStringLiteral("dalinira"));
+    assert(searchAllDaliNira.size() == 3);
 
     const auto searchGit = profileService.searchHistory(QStringLiteral("github"));
     assert(searchGit.size() == 1);
@@ -327,8 +327,8 @@ int main(int argc, char **argv) {
 
     // Show find bar through Ctrl+F dispatch.
     Q_EMIT findShortcut->activated();
-    assert(window.findChild<ardali::desktop_tabs::FindBarWidget *>() != nullptr);
-    auto *findBar = window.findChild<ardali::desktop_tabs::FindBarWidget *>();
+    assert(window.findChild<dalinira::desktop_tabs::FindBarWidget *>() != nullptr);
+    auto *findBar = window.findChild<dalinira::desktop_tabs::FindBarWidget *>();
     assert(!findBar->isHidden());
 
     // Set text and match count
@@ -527,9 +527,9 @@ int main(int argc, char **argv) {
     BrowserWindow window(sessionServices, true);
     window.resize(1000, 700);
     window.show();
-    window.addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
-    window.addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
-    window.addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+    window.addNewTab(QUrl(QStringLiteral("dalinira://newtab/")));
+    window.addNewTab(QUrl(QStringLiteral("dalinira://newtab/")));
+    window.addNewTab(QUrl(QStringLiteral("dalinira://newtab/")));
     // Pin the middle-created tab. Interactive pinning moves it to visual slot
     // zero; the session must persist that visual order, not insertion order.
     window.toggleTabPin(1);
@@ -675,7 +675,7 @@ int main(int argc, char **argv) {
     BrowserWindow window(services, true);
     window.resize(1000, 700);
     window.show();
-    window.addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+    window.addNewTab(QUrl(QStringLiteral("dalinira://newtab/")));
 
     QShortcut *newTabShortcut = nullptr;
     QShortcut *locationShortcut = nullptr;
@@ -719,7 +719,7 @@ int main(int argc, char **argv) {
 
     window.autofillController()->handleConsoleMessage(
         ownerView->page(),
-        QStringLiteral("ARDALI_CREDENTIAL_CANDIDATE:{\"origin\":\"https://login.example.com\",\"username\":\"step11-user\",\"password\":\"SyntheticSecret#2026\",\"submitted\":true,\"nonce\":\"step11-flow\"}"));
+        QStringLiteral("DALINIRA_CREDENTIAL_CANDIDATE:{\"origin\":\"https://login.example.com\",\"username\":\"step11-user\",\"password\":\"SyntheticSecret#2026\",\"submitted\":true,\"nonce\":\"step11-flow\"}"));
     const QString candidateKey = window.autofillController()->candidateKey(
         ownerView, QStringLiteral("https://login.example.com"), QStringLiteral("step11-user"));
     assert(window.autofillController()->pendingCandidateCount() == 1);
@@ -784,12 +784,12 @@ int main(int argc, char **argv) {
     assert(window.bookmarkBar() && window.bookmarkBar()->isHidden());
 
     // 6. Search results page: Bookmark bar must be HIDDEN
-    window.navigateFromUserInput(QStringLiteral("ardali test search"), QStringLiteral("Google"));
+    window.navigateFromUserInput(QStringLiteral("dalinira test search"), QStringLiteral("Google"));
     assert(!window.isCurrentTabNewTab());
     assert(window.bookmarkBar() && window.bookmarkBar()->isHidden());
 
     // 7. Internal non-New-Tab page: Bookmark bar must be HIDDEN
-    const int internalIdx = window.addNewTab(QUrl(QStringLiteral("ardali://settings")));
+    const int internalIdx = window.addNewTab(QUrl(QStringLiteral("dalinira://settings")));
     (void)internalIdx;
     assert(!window.isCurrentTabNewTab());
     assert(window.bookmarkBar() && window.bookmarkBar()->isHidden());
@@ -801,7 +801,7 @@ int main(int argc, char **argv) {
     assert(window.bookmarkBar() && window.bookmarkBar()->isHidden());
 
     // 9. Navigating home / back to New Tab: Bookmark bar must show again
-    window.navigateFromUserInput(QStringLiteral("ardali://newtab/"));
+    window.navigateFromUserInput(QStringLiteral("dalinira://newtab/"));
     assert(window.isCurrentTabNewTab());
     assert(window.bookmarkBar() && !window.bookmarkBar()->isHidden());
 
@@ -813,7 +813,7 @@ int main(int argc, char **argv) {
     tabYt.active = true;
 
     SavedTab tabNew;
-    tabNew.url = QUrl(QStringLiteral("ardali://newtab/"));
+    tabNew.url = QUrl(QStringLiteral("dalinira://newtab/"));
     tabNew.title = QStringLiteral("Yeni Sekme");
     tabNew.pinned = false;
     tabNew.active = false;

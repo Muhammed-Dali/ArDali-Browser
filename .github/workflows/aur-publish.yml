@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [ardali, ardali-bin]
+        package: [dalinira, dalinira-bin]
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -45,7 +45,7 @@ jobs:
           test "${{ inputs.release_tag }}" = "v${version}"
           test "$(sed -n 's/^pkgname=//p' "${recipe_dir}/PKGBUILD")" = "${AUR_PACKAGE}"
           test "$(sed -n 's/^pkgver=//p' "${recipe_dir}/PKGBUILD")" = "${version}"
-          archive="ardali-browser-${version}-linux-x86_64.tar.zst"
+          archive="dalinira-browser-${version}-linux-x86_64.tar.zst"
           gh release download "${{ inputs.release_tag }}" --pattern "${archive}" --dir "${RUNNER_TEMP}"
           checksum="$(sha256sum "${RUNNER_TEMP}/${archive}" | cut -d' ' -f1)"
           cp "${recipe_dir}/PKGBUILD" "${RUNNER_TEMP}/PKGBUILD"
@@ -53,7 +53,7 @@ jobs:
           sed -i "s/^sha256sums=('SKIP')$/sha256sums=('${checksum}')/" "${RUNNER_TEMP}/PKGBUILD"
           sed -i -E "s/^([[:space:]]*pkgver = ).*/\1${version}/" "${RUNNER_TEMP}/.SRCINFO"
           sed -i -E "s#releases/download/v[0-9]+\.[0-9]+\.[0-9]+/#releases/download/v${version}/#g" "${RUNNER_TEMP}/.SRCINFO"
-          sed -i -E "s#ardali-browser-[0-9]+\.[0-9]+\.[0-9]+-linux-x86_64#ardali-browser-${version}-linux-x86_64#g" "${RUNNER_TEMP}/.SRCINFO"
+          sed -i -E "s#dalinira-browser-[0-9]+\.[0-9]+\.[0-9]+-linux-x86_64#dalinira-browser-${version}-linux-x86_64#g" "${RUNNER_TEMP}/.SRCINFO"
           sed -i "s/sha256sums = SKIP/sha256sums = ${checksum}/" "${RUNNER_TEMP}/.SRCINFO"
           grep -F "pkgver = ${version}" "${RUNNER_TEMP}/.SRCINFO"
           grep -F "sha256sums=('${checksum}')" "${RUNNER_TEMP}/PKGBUILD"
@@ -73,5 +73,5 @@ jobs:
           git -C "${aur_dir}" add PKGBUILD .SRCINFO
           if git -C "${aur_dir}" diff --cached --quiet; then exit 0; fi
           git -C "${aur_dir}" -c user.name='Muhammed Dali' \
-            -c user.email='support@ardali.app' commit -m "Update ${AUR_PACKAGE} to ${{ inputs.release_tag }}"
+            -c user.email='support@dalinira.app' commit -m "Update ${AUR_PACKAGE} to ${{ inputs.release_tag }}"
           git -C "${aur_dir}" push origin HEAD

@@ -1,5 +1,5 @@
 (function () {
-  if (window.__ardaliTranslate) return;
+  if (window.__daliniraTranslate) return;
 
   const originalTexts = new WeakMap(); // Node/Element -> string (for text node) or { [attr]: string } (for element)
   const nodeMeta = new WeakMap(); // Text Node -> { state: 'original'|'pending'|'translated', originalText: string, translatedText: string, targetLang: string }
@@ -68,11 +68,11 @@
     const currentVal = node.nodeValue;
     if (!currentVal || !currentVal.trim()) return null;
 
-    let id = node.__ardali_id;
+    let id = node.__dalinira_id;
     let origText = currentVal;
     if (!id) {
       id = nextNodeId++;
-      node.__ardali_id = id;
+      node.__dalinira_id = id;
       originalTexts.set(node, currentVal);
       nodeMeta.set(node, {
         state: 'original',
@@ -95,7 +95,7 @@
     const currentVal = el.getAttribute(attrName);
     if (!currentVal || !currentVal.trim()) return null;
 
-    let attrKey = '__ardali_id_' + attrName;
+    let attrKey = '__dalinira_id_' + attrName;
     let id = el[attrKey];
     let origVal = currentVal;
     let origMap = originalTexts.get(el);
@@ -301,7 +301,7 @@
     }, 150);
   }
 
-  window.__ardaliTranslate = {
+  window.__daliniraTranslate = {
     detect: function () {
       const html = document.documentElement;
       const htmlLang = html ? (html.getAttribute('lang') || html.getAttribute('xml:lang') || '') : '';
@@ -529,8 +529,8 @@
   };
 
   // Setup SPA pushState / replaceState / popstate hooks
-  if (typeof history !== 'undefined' && history.pushState && !history.__ardali_patched) {
-    history.__ardali_patched = true;
+  if (typeof history !== 'undefined' && history.pushState && !history.__dalinira_patched) {
+    history.__dalinira_patched = true;
     const origPush = history.pushState;
     history.pushState = function () {
       const res = origPush.apply(this, arguments);

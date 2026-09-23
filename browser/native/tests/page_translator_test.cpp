@@ -190,7 +190,7 @@ int main(int argc, char *argv[]) {
     runJs(translateEngineScript());
 
     // 2. Extract nodes for Turkish translation (target = 'tr')
-    QVariant extTr = runJs(QStringLiteral("window.__ardaliTranslate.extractNodes({ lang: 'tr' });"));
+    QVariant extTr = runJs(QStringLiteral("window.__daliniraTranslate.extractNodes({ lang: 'tr' });"));
     QVariantList trNodes = extTr.toMap().value(QStringLiteral("nodes")).toList();
     assert(!trNodes.isEmpty());
 
@@ -244,7 +244,7 @@ int main(int argc, char *argv[]) {
     trUpdates.append(QJsonObject{{QStringLiteral("id"), nav2Id}, {QStringLiteral("translated"), QStringLiteral("Kurumsal")}});
     trUpdates.append(QJsonObject{{QStringLiteral("id"), nav1AttrId}, {QStringLiteral("type"), QStringLiteral("attr")}, {QStringLiteral("attr"), QStringLiteral("title")}, {QStringLiteral("translated"), QStringLiteral("Platform araçları")}});
 
-    runJs(QStringLiteral("window.__ardaliTranslate.applyTranslations(%1);")
+    runJs(QStringLiteral("window.__daliniraTranslate.applyTranslations(%1);")
           .arg(QString::fromUtf8(QJsonDocument(trUpdates).toJson(QJsonDocument::Compact))));
 
     // Verify DOM now displays Turkish
@@ -254,7 +254,7 @@ int main(int argc, char *argv[]) {
     assert(runJs(QStringLiteral("document.getElementById('nav1').getAttribute('title');")).toString() == QStringLiteral("Platform araçları"));
 
     // 4. Without restoring the page, change target from Turkish -> Arabic (target = 'ar')
-    QVariant extAr = runJs(QStringLiteral("window.__ardaliTranslate.extractNodes({ lang: 'ar' });"));
+    QVariant extAr = runJs(QStringLiteral("window.__daliniraTranslate.extractNodes({ lang: 'ar' });"));
     QVariantList arNodes = extAr.toMap().value(QStringLiteral("nodes")).toList();
     assert(!arNodes.isEmpty());
 
@@ -294,7 +294,7 @@ int main(int argc, char *argv[]) {
     arUpdates.append(QJsonObject{{QStringLiteral("id"), nav2Id}, {QStringLiteral("translated"), QString::fromUtf8("مؤسسات")}});
     arUpdates.append(QJsonObject{{QStringLiteral("id"), nav1AttrId}, {QStringLiteral("type"), QStringLiteral("attr")}, {QStringLiteral("attr"), QStringLiteral("title")}, {QStringLiteral("translated"), QString::fromUtf8("أدوات المنصة")}});
 
-    runJs(QStringLiteral("window.__ardaliTranslate.applyTranslations(%1);")
+    runJs(QStringLiteral("window.__daliniraTranslate.applyTranslations(%1);")
           .arg(QString::fromUtf8(QJsonDocument(arUpdates).toJson(QJsonDocument::Compact))));
 
     // Verify DOM now displays Arabic
@@ -304,7 +304,7 @@ int main(int argc, char *argv[]) {
     assert(runJs(QStringLiteral("document.getElementById('nav1').getAttribute('title');")).toString() == QString::fromUtf8("أدوات المنصة"));
 
     // 6. Restore original
-    runJs(QStringLiteral("window.__ardaliTranslate.restoreOriginal();"));
+    runJs(QStringLiteral("window.__daliniraTranslate.restoreOriginal();"));
 
     // Verify DOM is cleanly restored to original English without any Turkish or Arabic remnants
     assert(runJs(QStringLiteral("document.getElementById('hero').innerText;")).toString() == QStringLiteral("The future of building together"));

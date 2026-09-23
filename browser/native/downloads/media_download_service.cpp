@@ -1,5 +1,6 @@
 #include "media_download_service.h"
 
+#include "adult_content_protection.h"
 #include "security_utils.h"
 #include "yt_dlp_update_manager.h"
 
@@ -27,6 +28,66 @@ namespace {
 
 constexpr qsizetype kMaximumMetadataBytes = 32 * 1024 * 1024;
 constexpr int kMaximumPersistedJobs = 200;
+constexpr int kMaximumProtectionUrls = 512;
+const QString kAdultProtectionAnalysisMessage =
+    QStringLiteral("Yetişkin İçerik Koruması bu bağlantının analiz edilmesini engelledi.");
+const QString kAdultProtectionDownloadMessage =
+    QStringLiteral("Yetişkin İçerik Koruması bu indirmenin başlatılmasını engelledi.");
+
+bool isProtectedUrlBlocked(const QUrl &url) {
+  return url.isValid() && dalinira::core::AdultContentProtectionService::instance().isBlocked(url);
+}
+
+bool containsBlockedAdultUrl(const QUrl &contextUrl, const QVector<QUrl> &urls) {
+  if (isProtectedUrlBlocked(contextUrl)) return true;
+  for (const QUrl &url : urls) {
+    if (isProtectedUrlBlocked(url)) return true;
+  }
+  return false;
+}
+
+void appendProtectionUrl(const QJsonValue &value, QVector<QUrl> *urls, QSet<QString> *seen,
+                         bool *complete) {
+  if (!urls || !seen || !complete || !value.isString()) return;
+  const QUrl url(value.toString());
+  if (!url.isValid() || (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https"))
+      || url.host().isEmpty()) {
+    return;
+  }
+  const QString encoded = url.toString(QUrl::FullyEncoded);
+  if (seen->contains(encoded)) return;
+  if (urls->size() >= kMaximumProtectionUrls) {
+    *complete = false;
+    return;
+  }
+  seen->insert(encoded);
+  urls->append(url);
+}
+
+void collectProtectionUrls(const QJsonValue &value, QVector<QUrl> *urls, QSet<QString> *seen,
+                           bool *complete, int depth = 0) {
+  if (!urls || !seen || !complete) return;
+  if (depth > 16) {
+    *complete = false;
+    return;
+  }
+  if (value.isArray()) {
+    for (const QJsonValue &item : value.toArray())
+      collectProtectionUrls(item, urls, seen, complete, depth + 1);
+    return;
+  }
+  if (!value.isObject()) return;
+  const QJsonObject object = value.toObject();
+  static const QSet<QString> urlKeys{
+      QStringLiteral("url"), QStringLiteral("original_url"), QStringLiteral("webpage_url"),
+      QStringLiteral("webpage_url_basename"), QStringLiteral("manifest_url"),
+      QStringLiteral("fragment_base_url"), QStringLiteral("thumbnail")};
+  for (auto it = object.constBegin(); it != object.constEnd(); ++it) {
+    if (urlKeys.contains(it.key())) appendProtectionUrl(it.value(), urls, seen, complete);
+    if (it.value().isArray() || it.value().isObject())
+      collectProtectionUrls(it.value(), urls, seen, complete, depth + 1);
+  }
+}
 
 QString executableName(const QString &base) {
 #if defined(Q_OS_WIN)
@@ -215,6 +276,12 @@ bool MediaDownloadService::parseAnalysisJson(const QByteArray &json, const QUrl 
   const QJsonObject root = document.object();
   MediaAnalysisResult parsed;
   parsed.url = url;
+  parsed.adultProtectionContextUrl = url;
+  QSet<QString> protectionUrls;
+  appendProtectionUrl(QJsonValue(url.toString(QUrl::FullyEncoded)), &parsed.adultProtectionUrls,
+                      &protectionUrls, &parsed.adultProtectionUrlsComplete);
+  collectProtectionUrls(root, &parsed.adultProtectionUrls, &protectionUrls,
+                        &parsed.adultProtectionUrlsComplete);
   parsed.id = root.value(QStringLiteral("id")).toString();
   parsed.title = root.value(QStringLiteral("title")).toString().trimmed().left(240);
   if (parsed.title.isEmpty()) parsed.title = root.value(QStringLiteral("fulltitle")).toString().trimmed().left(240);
@@ -284,9 +351,9 @@ QStringList MediaDownloadService::buildDownloadArguments(const MediaDownloadRequ
                    QStringLiteral("--windows-filenames"), QStringLiteral("--trim-filenames"), QStringLiteral("200"),
                    QStringLiteral("--progress-delta"), QStringLiteral("0.05"),
                    QStringLiteral("--progress-template"),
-                   QStringLiteral("download:ARDALI_PROGRESS:%(progress._percent_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"),
-                   QStringLiteral("--progress-template"), QStringLiteral("postprocess:ARDALI_POST:%(progress.status)s"),
-                   QStringLiteral("--print"), QStringLiteral("after_move:ARDALI_FILE:%(filepath)s"),
+                   QStringLiteral("download:DALINIRA_PROGRESS:%(progress._percent_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"),
+                   QStringLiteral("--progress-template"), QStringLiteral("postprocess:DALINIRA_POST:%(progress.status)s"),
+                   QStringLiteral("--print"), QStringLiteral("after_move:DALINIRA_FILE:%(filepath)s"),
                    // yt-dlp's --print implicitly enables --quiet. Explicitly
                    // undo it so download progress continues to reach the UI.
                    QStringLiteral("--no-quiet")};
@@ -372,10 +439,15 @@ void MediaDownloadService::setDefaultDownloadDirectory(const QString &directory)
   if (info.isDir() && info.isAbsolute()) defaultDownloadDirectory_ = info.absoluteFilePath();
 }
 
-bool MediaDownloadService::analyze(const QUrl &url) {
+bool MediaDownloadService::analyze(const QUrl &url, bool adultContentProtectionEnabled) {
   QString reason;
   if (!isSupportedMediaUrl(url, &reason)) { emit analysisFailed(reason); return false; }
   if (analysisRunning()) return false;
+  analysisAdultContentProtectionEnabled_ = adultContentProtectionEnabled;
+  if (adultContentProtectionEnabled && isProtectedUrlBlocked(url)) {
+    emit analysisFailed(kAdultProtectionAnalysisMessage);
+    return false;
+  }
   if (!ytDlpAvailable()) {
     if (!updateManager_) { emit analysisFailed(QStringLiteral("Hiç çalışan yt-dlp bulunamadı.")); return false; }
     pendingAnalysisUrl_ = url;
@@ -423,7 +495,7 @@ void MediaDownloadService::tryNextJavaScriptRuntime() {
   launched->setProgram(candidate.second);
   launched->setArguments({QStringLiteral("--version")});
   launched->setProcessEnvironment(trustedProcessEnvironment(candidate.second, {}));
-  launched->setProperty("ardali-runtime-name", candidate.first);
+  launched->setProperty("dalinira-runtime-name", candidate.first);
   connect(launched, &QProcess::readyReadStandardOutput, this, [this, launched] {
     if (jsRuntimeProcess_ != launched) return;
     jsRuntimeOutput_ += launched->readAllStandardOutput();
@@ -450,7 +522,7 @@ void MediaDownloadService::finishJavaScriptRuntimeProbe(QProcess *process, bool 
   if (!process || jsRuntimeProcess_ != process) return;
   jsRuntimeTimeout_->stop();
   jsRuntimeOutput_ += process->readAllStandardOutput() + process->readAllStandardError();
-  const QString name = process->property("ardali-runtime-name").toString();
+  const QString name = process->property("dalinira-runtime-name").toString();
   const QString path = process->program();
   const bool exitedCleanly = !failedToStart && process->exitStatus() == QProcess::NormalExit
       && process->exitCode() == 0 && jsRuntimeOutput_.size() <= 2048;
@@ -475,6 +547,10 @@ void MediaDownloadService::finishJavaScriptRuntimeProbe(QProcess *process, bool 
 }
 
 void MediaDownloadService::startAnalysisProcess(const QUrl &url) {
+  if (analysisAdultContentProtectionEnabled_ && isProtectedUrlBlocked(url)) {
+    emit analysisFailed(kAdultProtectionAnalysisMessage);
+    return;
+  }
   analysisUrl_ = url;
   analysisStdout_.clear();
   analysisStderr_.clear();
@@ -524,6 +600,14 @@ void MediaDownloadService::startAnalysisProcess(const QUrl &url) {
     MediaAnalysisResult result;
     QString error;
     if (!parseAnalysisJson(analysisStdout_, analysisUrl_, &result, &error)) { emit analysisFailed(error); return; }
+    result.adultContentProtectionEnabled = analysisAdultContentProtectionEnabled_;
+    result.adultProtectionContextUrl = analysisUrl_;
+    if (analysisAdultContentProtectionEnabled_
+        && (!result.adultProtectionUrlsComplete
+            || containsBlockedAdultUrl(result.adultProtectionContextUrl, result.adultProtectionUrls))) {
+      emit analysisFailed(kAdultProtectionAnalysisMessage);
+      return;
+    }
     emit analysisReady(result);
   });
   emit analysisStarted(url);
@@ -559,10 +643,22 @@ void MediaDownloadService::cancelAnalysis() {
   });
 }
 
-QUuid MediaDownloadService::enqueue(const MediaDownloadRequest &candidate) {
+QUuid MediaDownloadService::enqueue(const MediaDownloadRequest &candidate, QString *error) {
   MediaDownloadRequest request = candidate;
   QString reason;
-  if (!ytDlpAvailable() || !isSupportedMediaUrl(request.url, &reason)) return {};
+  if (error) error->clear();
+  if (request.adultContentProtectionEnabled
+      && (!request.adultProtectionUrlsComplete
+          || containsBlockedAdultUrl(request.adultProtectionContextUrl.isEmpty()
+                                         ? request.url : request.adultProtectionContextUrl,
+                                     request.adultProtectionUrls))) {
+    if (error) *error = kAdultProtectionDownloadMessage;
+    return {};
+  }
+  if (!ytDlpAvailable() || !isSupportedMediaUrl(request.url, &reason)) {
+    if (error) *error = reason;
+    return {};
+  }
   const QFileInfo directory(request.targetDirectory.isEmpty() ? defaultDownloadDirectory_ : request.targetDirectory);
   if (!directory.isDir() || !directory.isAbsolute() || !directory.isWritable()) return {};
   request.targetDirectory = directory.absoluteFilePath();
@@ -636,6 +732,17 @@ QUuid MediaDownloadService::retry(const QUuid &id) {
   return enqueue(*request);
 }
 
+QUuid MediaDownloadService::retry(const QUuid &id, bool adultContentProtectionEnabled,
+                                  QString *error) {
+  const auto stored = requests_.constFind(id);
+  if (stored == requests_.cend()) return {};
+  const int index = jobIndex(id);
+  if (index < 0 || !isTerminal(jobs_[index].state)) return {};
+  MediaDownloadRequest request = *stored;
+  request.adultContentProtectionEnabled = adultContentProtectionEnabled;
+  return enqueue(request, error);
+}
+
 bool MediaDownloadService::remove(const QUuid &id) {
   const int index = jobIndex(id);
   if (index < 0 || !isTerminal(jobs_[index].state)) return false;
@@ -657,6 +764,14 @@ void MediaDownloadService::startNextDownload() {
   const int index = jobIndex(currentJobId_);
   const auto request = requests_.constFind(currentJobId_);
   if (index < 0 || request == requests_.cend()) { currentJobId_ = {}; startNextDownload(); return; }
+  if (request->adultContentProtectionEnabled
+      && (!request->adultProtectionUrlsComplete
+          || containsBlockedAdultUrl(request->adultProtectionContextUrl.isEmpty()
+                                         ? request->url : request->adultProtectionContextUrl,
+                                     request->adultProtectionUrls))) {
+    finishCurrent(MediaDownloadState::Failed, kAdultProtectionDownloadMessage);
+    return;
+  }
   jobs_[index].state = MediaDownloadState::Downloading;
   jobs_[index].statusText = stateText(jobs_[index].state);
   currentCancelRequested_ = false;
@@ -725,7 +840,7 @@ void MediaDownloadService::processDownloadOutput(QByteArray *buffer, const QByte
 void MediaDownloadService::processDownloadLine(const QString &line) {
   const int index = jobIndex(currentJobId_);
   if (index < 0 || line.isEmpty()) return;
-  if (line.startsWith(QStringLiteral("ARDALI_PROGRESS:"))) {
+  if (line.startsWith(QStringLiteral("DALINIRA_PROGRESS:"))) {
     const QStringList fields = line.mid(16).split(QLatin1Char('|'));
     if (fields.size() >= 5) {
       QString cleanPercent;
@@ -769,7 +884,7 @@ void MediaDownloadService::processDownloadLine(const QString &line) {
     }
     return;
   }
-  if (line.startsWith(QStringLiteral("ARDALI_POST:"))) {
+  if (line.startsWith(QStringLiteral("DALINIRA_POST:"))) {
     const QString status = line.mid(12).trimmed();
     if (status != QLatin1String("finished")) {
       jobs_[index].state = MediaDownloadState::Processing;
@@ -785,7 +900,7 @@ void MediaDownloadService::processDownloadLine(const QString &line) {
     }
     return;
   }
-  if (line.startsWith(QStringLiteral("ARDALI_FILE:"))) {
+  if (line.startsWith(QStringLiteral("DALINIRA_FILE:"))) {
     const QString reported = line.mid(12).trimmed();
     const QFileInfo output(reported);
     const QString absolute = output.isAbsolute() ? output.absoluteFilePath()
@@ -856,8 +971,17 @@ void MediaDownloadService::persistHistory() const {
   for (const MediaDownloadJob &job : jobs_) {
     if (!isTerminal(job.state)) continue;
     const MediaDownloadRequest request = requests_.value(job.id);
+    QJsonArray protectionUrls;
+    for (const QUrl &url : request.adultProtectionUrls) {
+      const QUrl sanitized = BrowserSecurity::sanitizeUrlForPersistence(url);
+      if (sanitized.isValid()) protectionUrls.append(sanitized.toString(QUrl::FullyEncoded));
+    }
     entries.append(QJsonObject{{QStringLiteral("id"), job.id.toString(QUuid::WithoutBraces)},
         {QStringLiteral("url"), BrowserSecurity::sanitizeUrlForPersistence(job.url).toString(QUrl::FullyEncoded)},
+        {QStringLiteral("adultProtectionContextUrl"), BrowserSecurity::sanitizeUrlForPersistence(
+            request.adultProtectionContextUrl).toString(QUrl::FullyEncoded)},
+        {QStringLiteral("adultProtectionUrls"), protectionUrls},
+        {QStringLiteral("adultProtectionUrlsComplete"), request.adultProtectionUrlsComplete},
         {QStringLiteral("title"), job.title}, {QStringLiteral("targetDirectory"), job.targetDirectory},
         {QStringLiteral("outputPath"), job.outputPath}, {QStringLiteral("mimeType"), job.mimeType},
         {QStringLiteral("source"), job.source},
@@ -925,6 +1049,18 @@ void MediaDownloadService::loadHistory() {
     jobs_.append(job);
     MediaDownloadRequest request;
     request.url = job.url;
+    request.adultProtectionContextUrl = BrowserSecurity::sanitizeUrlForPersistence(
+        QUrl(object.value(QStringLiteral("adultProtectionContextUrl")).toString()));
+    request.adultProtectionUrlsComplete = object.value(
+        QStringLiteral("adultProtectionUrlsComplete")).toBool(true);
+    for (const QJsonValue &storedUrl : object.value(QStringLiteral("adultProtectionUrls")).toArray()) {
+      if (request.adultProtectionUrls.size() >= kMaximumProtectionUrls) {
+        request.adultProtectionUrlsComplete = false;
+        break;
+      }
+      const QUrl sanitized = BrowserSecurity::sanitizeUrlForPersistence(QUrl(storedUrl.toString()));
+      if (isSupportedMediaUrl(sanitized)) request.adultProtectionUrls.append(sanitized);
+    }
     request.title = job.title;
     request.source = job.source;
     request.thumbnailUrl = job.thumbnailUrl;

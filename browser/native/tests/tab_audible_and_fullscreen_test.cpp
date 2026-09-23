@@ -117,10 +117,10 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  const QUrl ardaliSettingsUrl(QStringLiteral("ardali://settings"));
-  const QString settingsDomain = TabHoverCard::extractDomain(ardaliSettingsUrl);
+  const QUrl daliniraSettingsUrl(QStringLiteral("dalinira://settings"));
+  const QString settingsDomain = TabHoverCard::extractDomain(daliniraSettingsUrl);
   if (settingsDomain != QLatin1String("Ayarlar")) {
-    std::cerr << "Domain extraction for ardali://settings failed\n";
+    std::cerr << "Domain extraction for dalinira://settings failed\n";
     return 1;
   }
 

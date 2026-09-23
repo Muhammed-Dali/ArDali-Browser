@@ -2,14 +2,14 @@
 
 #include <QCoreApplication>
 
-namespace ardali::core {
+namespace dalinira::core {
 
 const std::array<SearchEngineDefinition, 4> &searchEngineDefinitions() {
   static const std::array<SearchEngineDefinition, 4> definitions{{
-      {"Google", "google.ico", "Google'da arayın veya URL'yi yazın", "https://www.google.com/search", "https://suggestqueries.google.com/complete/search?client=firefox"},
-      {"DuckDuckGo", "duckduckgo.ico", "DuckDuckGo'da arayın veya URL'yi yazın", "https://duckduckgo.com/", "https://duckduckgo.com/ac/?type=list"},
-      {"Brave Search", "brave.ico", "Brave Search'te arayın veya URL'yi yazın", "https://search.brave.com/search", "https://search.brave.com/api/suggest"},
-      {"Bing", "bing.ico", "Bing'de arayın veya URL'yi yazın", "https://www.bing.com/search", "https://api.bing.com/osjson.aspx"},
+      {"Google", "google.ico", "Google'da arayın veya URL'yi yazın", "https://www.google.com/search", "https://suggestqueries.google.com/complete/search?client=firefox&oe=utf-8", "q"},
+      {"DuckDuckGo", "duckduckgo.ico", "DuckDuckGo'da arayın veya URL'yi yazın", "https://duckduckgo.com/", "https://duckduckgo.com/ac/?type=list", "q"},
+      {"Startpage", "startpage.ico", "Startpage'de arayın veya URL'yi yazın", "https://www.startpage.com/sp/search", "https://www.startpage.com/osuggestions", "query"},
+      {"Mojeek", "mojeek.ico", "Mojeek'te arayın veya URL'yi yazın", "https://www.mojeek.com/search", "", "q"},
   }};
   return definitions;
 }
@@ -19,10 +19,13 @@ const SearchEngineDefinition &searchEngineDefinition(const QString &engineName) 
   const auto &definitions = searchEngineDefinitions();
   if (lower.contains(QLatin1String("duckduckgo")) || lower.contains(QLatin1String("duck")))
     return definitions[1];
-  if (lower.contains(QLatin1String("brave"))) return definitions[2];
-  if (lower.contains(QLatin1String("bing"))) return definitions[3];
-  if (lower.contains(QLatin1String("google"))) return definitions[0];
-  return definitions[1];
+  if (lower.contains(QLatin1String("startpage")))
+    return definitions[2];
+  if (lower.contains(QLatin1String("mojeek")))
+    return definitions[3];
+  if (lower.contains(QLatin1String("google")) || lower.contains(QLatin1String("brave")) || lower.contains(QLatin1String("bing")))
+    return definitions[0];
+  return definitions[0];
 }
 
 QString searchEngineIconAsset(const QString &engineName) {
@@ -37,4 +40,4 @@ QString searchEnginePlaceholderText(const QString &engineName) {
   return QCoreApplication::translate("SearchPlaceholder", searchEngineDefinition(engineName).placeholder);
 }
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

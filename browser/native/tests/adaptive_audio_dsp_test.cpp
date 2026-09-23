@@ -14,7 +14,7 @@ int main(int argc, char *argv[]) {
   if (!directory.isValid()) return 1;
   QSettings::setDefaultFormat(QSettings::IniFormat);
   QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, directory.path());
-  QCoreApplication::setOrganizationName(QStringLiteral("ArDaliTest"));
+  QCoreApplication::setOrganizationName(QStringLiteral("DaliNiraTest"));
   QCoreApplication::setApplicationName(QStringLiteral("AdaptiveAudioDspTest"));
 
   // 1. Activity Checks
@@ -57,21 +57,21 @@ int main(int argc, char *argv[]) {
   // 2. Performance Policy Mode Integration
   {
     WebAudioEffectsController controller;
-    if (controller.performancePolicyMode() != ardali::PerformancePolicyMode::Balanced) return 16;
+    if (controller.performancePolicyMode() != dalinira::PerformancePolicyMode::Balanced) return 16;
 
-    controller.setPerformancePolicyMode(ardali::PerformancePolicyMode::MemorySaver);
-    if (controller.performancePolicyMode() != ardali::PerformancePolicyMode::MemorySaver) return 17;
+    controller.setPerformancePolicyMode(dalinira::PerformancePolicyMode::MemorySaver);
+    if (controller.performancePolicyMode() != dalinira::PerformancePolicyMode::MemorySaver) return 17;
 
     const QString scriptMem = controller.parameterUpdateScript();
     if (!scriptMem.contains(QStringLiteral("policyMode: 'memory_saver'"))) return 18;
 
-    controller.setPerformancePolicyMode(ardali::PerformancePolicyMode::MaximumPerformance);
-    if (controller.performancePolicyMode() != ardali::PerformancePolicyMode::MaximumPerformance) return 19;
+    controller.setPerformancePolicyMode(dalinira::PerformancePolicyMode::MaximumPerformance);
+    if (controller.performancePolicyMode() != dalinira::PerformancePolicyMode::MaximumPerformance) return 19;
 
     const QString scriptMax = controller.parameterUpdateScript();
     if (!scriptMax.contains(QStringLiteral("policyMode: 'maximum_performance'"))) return 20;
 
-    controller.setPerformancePolicyMode(ardali::PerformancePolicyMode::Balanced);
+    controller.setPerformancePolicyMode(dalinira::PerformancePolicyMode::Balanced);
     const QString scriptBal = controller.parameterUpdateScript();
     if (!scriptBal.contains(QStringLiteral("policyMode: 'balanced'"))) return 21;
   }

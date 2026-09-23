@@ -2,7 +2,7 @@
 #include "settings_ui_helpers.h"
 #include "browser_profile_service.h"
 
-using namespace ardali::settings_ui;
+using namespace dalinira::settings_ui;
 
 QWidget *SettingsPage::createContentSection() {
   Section section = makeSection(QStringLiteral("İçerik"), QStringLiteral("Web sitelerinin JavaScript, resim, çerez ve açılır pencere davranışlarını yönetin."));

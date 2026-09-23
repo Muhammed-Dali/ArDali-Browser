@@ -9,7 +9,7 @@
 #include <QString>
 #include <QVariantMap>
 
-namespace ardali::i18n {
+namespace dalinira::i18n {
 
 struct LanguageInfo {
   QString code;
@@ -91,9 +91,9 @@ class LanguageManager : public QObject {
   bool initialized_{false};
 };
 
-}  // namespace ardali::i18n
+}  // namespace dalinira::i18n
 
-namespace ardali {
-using LanguageInfo = ardali::i18n::LanguageInfo;
-using LanguageManager = ardali::i18n::LanguageManager;
-}  // namespace ardali
+namespace dalinira {
+using LanguageInfo = dalinira::i18n::LanguageInfo;
+using LanguageManager = dalinira::i18n::LanguageManager;
+}  // namespace dalinira

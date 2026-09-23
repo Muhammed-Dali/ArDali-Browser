@@ -4,7 +4,7 @@
 
 #include "domain_normalizer.h"
 
-namespace ardali::core {
+namespace dalinira::core {
 
 FrequentSitesCandidateProvider::FrequentSitesCandidateProvider(
     IBrowserProfileDataProvider *dataProvider,
@@ -153,4 +153,4 @@ std::optional<QUrl> FrequentSitesCandidateProvider::findNavigationCandidate(
   return std::nullopt;
 }
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

@@ -7,7 +7,7 @@
 // Chromium source: Copyright The Chromium Authors, BSD-style license. The
 // original attribution headers remain intact in browser/native/tabs-complete.
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 namespace {
 
 LayoutMetrics chromeLayout() {
@@ -51,7 +51,7 @@ TabAppearance chromeAppearance() {
   return result;
 }
 
-TabAppearance ardaliAppearance() {
+TabAppearance daliniraAppearance() {
   TabAppearance result = chromeAppearance();
   result.layout.preferredTabWidth = 236;
   result.surfaceTopInset = 2;
@@ -85,7 +85,7 @@ TabAppearance floatingPillAppearance() {
   return result;
 }
 
-TabAppearance ardaliConnectedAppearance() {
+TabAppearance daliniraConnectedAppearance() {
   TabAppearance result = floatingPillAppearance();
   result.layout.preferredTabWidth = 236;
   result.surfaceTopInset = 4;
@@ -118,29 +118,29 @@ TabStyle tabStyleFromPreference(const QString &value) {
       normalized == QLatin1String("standard")) {
     return TabStyle::ChromeCurved;
   }
-  if (normalized == QLatin1String("ardali_signature")) {
-    return TabStyle::ArDaliSignature;
+  if (normalized == QLatin1String("dalinira_signature")) {
+    return TabStyle::DaliNiraSignature;
   }
   if (normalized == QLatin1String("floating_pill") ||
       normalized == QLatin1String("modern_pill")) {
     return TabStyle::FloatingPill;
   }
-  if (normalized == QLatin1String("ardali_connected") ||
+  if (normalized == QLatin1String("dalinira_connected") ||
       normalized == QLatin1String("connected") ||
-      normalized == QLatin1String("ardali_baglantili")) {
-    return TabStyle::ArDaliConnected;
+      normalized == QLatin1String("dalinira_baglantili")) {
+    return TabStyle::DaliNiraConnected;
   }
-  return TabStyle::ArDaliConnected;
+  return TabStyle::DaliNiraConnected;
 }
 
 QString tabStylePreferenceValue(TabStyle style) {
   switch (style) {
-  case TabStyle::ArDaliSignature:
-    return QStringLiteral("ardali_signature");
+  case TabStyle::DaliNiraSignature:
+    return QStringLiteral("dalinira_signature");
   case TabStyle::FloatingPill:
     return QStringLiteral("floating_pill");
-  case TabStyle::ArDaliConnected:
-    return QStringLiteral("ardali_connected");
+  case TabStyle::DaliNiraConnected:
+    return QStringLiteral("dalinira_connected");
   case TabStyle::ChromeCurved:
     return QStringLiteral("chrome_curved");
   }
@@ -149,16 +149,16 @@ QString tabStylePreferenceValue(TabStyle style) {
 
 const TabAppearance &tabAppearance(TabStyle style) {
   static const TabAppearance chrome = chromeAppearance();
-  static const TabAppearance ardali = ardaliAppearance();
+  static const TabAppearance dalinira = daliniraAppearance();
   static const TabAppearance floatingPill = floatingPillAppearance();
-  static const TabAppearance ardaliConnected = ardaliConnectedAppearance();
+  static const TabAppearance daliniraConnected = daliniraConnectedAppearance();
   switch (style) {
-  case TabStyle::ArDaliSignature:
-    return ardali;
+  case TabStyle::DaliNiraSignature:
+    return dalinira;
   case TabStyle::FloatingPill:
     return floatingPill;
-  case TabStyle::ArDaliConnected:
-    return ardaliConnected;
+  case TabStyle::DaliNiraConnected:
+    return daliniraConnected;
   case TabStyle::ChromeCurved:
     return chrome;
   }
@@ -182,7 +182,7 @@ QPainterPath tabSurfacePath(const QRectF &logicalRect, int stripHeight,
   const QRectF surface = tabSurfaceRect(logicalRect, style, activeOrDragged);
   QPainterPath path;
 
-  if (style == TabStyle::ArDaliConnected) {
+  if (style == TabStyle::DaliNiraConnected) {
     // 1. Clean capsule-like tab body on all tabs
     path.addRoundedRect(surface, appearance.hoverCornerRadius,
                         appearance.hoverCornerRadius);
@@ -245,4 +245,4 @@ QPainterPath tabSurfacePath(const QRectF &logicalRect, int stripHeight,
   return path;
 }
 
-} // namespace ardali::desktop_tabs
+} // namespace dalinira::desktop_tabs

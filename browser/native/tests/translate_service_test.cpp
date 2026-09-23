@@ -158,7 +158,7 @@ class FakeTranslateNetworkAccessManager final : public QNetworkAccessManager {
         QUrlQuery q(QString::fromUtf8(reqBody_));
         const QString qStr = q.queryItemValue(QStringLiteral("q"), QUrl::FullyDecoded);
         const QString tl = QUrlQuery(req_.url()).queryItemValue(QStringLiteral("tl"), QUrl::FullyDecoded);
-        const QStringList parts = qStr.split(QStringLiteral("___ARDALI_SPLIT___"));
+        const QStringList parts = qStr.split(QStringLiteral("___DALINIRA_SPLIT___"));
         QJsonArray segments;
         for (int i = 0; i < parts.size(); ++i) {
           const QString trimmed = parts.at(i).trimmed();
@@ -181,7 +181,7 @@ class FakeTranslateNetworkAccessManager final : public QNetworkAccessManager {
             if (tl == QLatin1String("ar")) {
               seg.append(translated + QString::fromUtf8("\n__أردالي_سبليت___\n"));
             } else {
-              seg.append(translated + QStringLiteral("\n___ARDALI_SPLIT___\n"));
+              seg.append(translated + QStringLiteral("\n___DALINIRA_SPLIT___\n"));
             }
           } else {
             seg.append(translated);
@@ -845,6 +845,6 @@ int main(int argc, char **argv) {
   testLanguageCodeMappingAcrossProviders();
   testGoogleGtxArabicBatchTransliteration();
 
-  std::cout << "All ArDali Translation Provider & Credential Vault Security Tests passed successfully!" << std::endl;
+  std::cout << "All DaliNira Translation Provider & Credential Vault Security Tests passed successfully!" << std::endl;
   return 0;
 }

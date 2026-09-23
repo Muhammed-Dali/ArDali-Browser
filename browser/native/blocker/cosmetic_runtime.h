@@ -1,14 +1,14 @@
 #pragma once
 
 // One isolated-world lifecycle shared by static CSS and procedural rules.
-inline constexpr auto kArDaliCosmeticRuntime = R"JS(
+inline constexpr auto kDaliNiraCosmeticRuntime = R"JS(
 (function(){
- const key='__ardaliCosmeticRuntime';
+ const key='__daliniraCosmeticRuntime';
  if(window[key]){window[key].setCss(%1);return;}
  const hiddenNodes=new WeakSet();
  function report(count,type){
   if(count>0){
-   console.log('__ARDALI_ADBLOCK_HIT__:'+count+':'+(type||'cosmetic'));
+   console.log('__DALINIRA_ADBLOCK_HIT__:'+count+':'+(type||'cosmetic'));
   }
  }
  const state={css:%1,style:null,observer:null,timer:0,active:true,callbacks:[],roots:new Set(),hiddenNodes:hiddenNodes,reportBlock:report};
@@ -17,7 +17,7 @@ inline constexpr auto kArDaliCosmeticRuntime = R"JS(
  state.pause=()=>{state.active=false;if(state.observer)state.observer.disconnect();clearTimeout(state.timer);state.timer=0;state.roots.clear();state.callbacks=[];state.style?.remove();};
  function restore(){
   if(!state.active)return;
-  if(!state.style) {state.style=document.createElement('style');state.style.id='ardali-adblock-cosmetic';}
+  if(!state.style) {state.style=document.createElement('style');state.style.id='dalinira-adblock-cosmetic';}
   if(state.style.textContent!==state.css)state.style.textContent=state.css;
   if(!state.style.isConnected)(document.head||document.documentElement)?.appendChild(state.style);
  }

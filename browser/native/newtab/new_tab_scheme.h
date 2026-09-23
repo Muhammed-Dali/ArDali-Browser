@@ -7,18 +7,18 @@
 class QWebEngineUrlSchemeHandler;
 class QWebEngineProfile;
 
-namespace ardali::core {
+namespace dalinira::core {
 class IBrowserProfileDataProvider;
 }
 
-void registerArdaliUrlSchemes();
-QString newTabFaviconUrl(const ardali::core::IBrowserProfileDataProvider *profileData, const QUrl &page);
-QJsonArray collectNewTabFrequentSites(const ardali::core::IBrowserProfileDataProvider *profileData,
+void registerDaliNiraUrlSchemes();
+QString newTabFaviconUrl(const dalinira::core::IBrowserProfileDataProvider *profileData, const QUrl &page);
+QJsonArray collectNewTabFrequentSites(const dalinira::core::IBrowserProfileDataProvider *profileData,
                                       int limit = 6);
-QJsonArray collectNewTabBookmarks(const ardali::core::IBrowserProfileDataProvider *profileData,
+QJsonArray collectNewTabBookmarks(const dalinira::core::IBrowserProfileDataProvider *profileData,
                                   int limit = 6);
 QWebEngineUrlSchemeHandler *createNewTabSchemeHandler(const QString &assetsDirectory, const QString &managedBackgroundPath,
                                                       const QString &managedThumbnailPath,
-                                                      ardali::core::IBrowserProfileDataProvider *profileData = nullptr,
+                                                      dalinira::core::IBrowserProfileDataProvider *profileData = nullptr,
                                                       QObject *parent = nullptr,
                                                       QWebEngineProfile *webProfile = nullptr);

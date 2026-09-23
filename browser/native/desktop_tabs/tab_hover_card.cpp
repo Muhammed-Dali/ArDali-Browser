@@ -161,13 +161,13 @@ TabHoverCard::TabHoverCard(QWidget *parent) : QFrame(parent) {
 }
 
 QString TabHoverCard::extractDomain(const QUrl &url) {
-  if (url.isEmpty()) return QStringLiteral("ArDaliBrowser");
+  if (url.isEmpty()) return QStringLiteral("DaliNiraBrowser");
 
-  if (url.scheme() == QLatin1String("ardali")) {
+  if (url.scheme() == QLatin1String("dalinira")) {
     const QString host = url.host().toLower();
     const QString path = url.path().toLower();
-    if (host == QLatin1String("newtab") || host == QLatin1String("ardali-browser.local")) {
-      return QStringLiteral("ArDaliBrowser");
+    if (host == QLatin1String("newtab") || host == QLatin1String("dalinira-browser.local")) {
+      return QStringLiteral("DaliNiraBrowser");
     }
     if (host == QLatin1String("settings") || path.contains(QLatin1String("settings"))) {
       return QStringLiteral("Ayarlar");
@@ -188,13 +188,13 @@ QString TabHoverCard::extractDomain(const QUrl &url) {
       return QStringLiteral("Kalkan");
     }
     if (host == QLatin1String("listen") || host == QLatin1String("listen-settings")) {
-      return QStringLiteral("ArDali Pulse");
+      return QStringLiteral("DaliNira Pulse");
     }
-    return QStringLiteral("ArDali");
+    return QStringLiteral("DaliNira");
   }
 
-  if (url.host() == QLatin1String("ardali-browser.local")) {
-    return QStringLiteral("ArDaliBrowser");
+  if (url.host() == QLatin1String("dalinira-browser.local")) {
+    return QStringLiteral("DaliNiraBrowser");
   }
 
   if (!url.host().isEmpty()) {
@@ -205,7 +205,7 @@ QString TabHoverCard::extractDomain(const QUrl &url) {
     return host;
   }
 
-  return QStringLiteral("ArDaliBrowser");
+  return QStringLiteral("DaliNiraBrowser");
 }
 
 TabMemoryInfo TabHoverCard::measureMemory(QWebEnginePage *page, const QVector<QPointer<QWebEngineView>> &allViews) {

@@ -1,6 +1,6 @@
 #include "tab_group_model.h"
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 TabGroupModel::TabGroupModel(QObject *parent) : QObject(parent) {}
 
@@ -118,4 +118,4 @@ void TabGroupModel::clear() {
   tabToGroup_.clear();
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

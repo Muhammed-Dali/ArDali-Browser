@@ -11,7 +11,7 @@
 #include "browser_profile_data_provider.h"
 #include "navigation_candidate.h"
 
-namespace ardali::core {
+namespace dalinira::core {
 
 class BookmarkCandidateProvider : public QObject, public INavigationCandidateProvider {
   Q_OBJECT
@@ -57,4 +57,4 @@ class BookmarkCandidateProvider : public QObject, public INavigationCandidatePro
   mutable QVector<BookmarkItem> indexedBookmarks_;
 };
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

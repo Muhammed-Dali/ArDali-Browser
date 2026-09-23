@@ -6,7 +6,7 @@ on:
     paths:
       - website/**
       - packaging/pacman/index.html
-      - packaging/pacman/ardali.repo
+      - packaging/pacman/dalinira.repo
       - .github/workflows/website-pages.yml
   workflow_dispatch:
 
@@ -30,11 +30,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          page_root="${RUNNER_TEMP}/ardali-pages"
+          page_root="${RUNNER_TEMP}/dalinira-pages"
           install -dm755 "${page_root}/x86_64"
           cp -a website/. "${page_root}/"
           install -Dm644 packaging/pacman/index.html "${page_root}/pacman.html"
-          install -Dm644 packaging/pacman/ardali.repo "${page_root}/ardali.repo"
+          install -Dm644 packaging/pacman/dalinira.repo "${page_root}/dalinira.repo"
 
           # Preserve the historical Pages package paths while the official
           # pacman configuration continues to use GitHub Release assets.
@@ -43,9 +43,9 @@ jobs:
             download_dir="${RUNNER_TEMP}/pacman-assets"
             install -dm755 "${download_dir}"
             gh release download pacman-repo --dir "${download_dir}" \
-              --pattern 'ardali.db*' \
-              --pattern 'ardali.files*' \
-              --pattern "ardali-${version}-*.pkg.tar.zst"
+              --pattern 'dalinira.db*' \
+              --pattern 'dalinira.files*' \
+              --pattern "dalinira-${version}-*.pkg.tar.zst"
             find "${download_dir}" -maxdepth 1 -type f -exec cp -f {} "${page_root}/" \;
             find "${download_dir}" -maxdepth 1 -type f -exec cp -f {} "${page_root}/x86_64/" \;
           fi
@@ -53,7 +53,7 @@ jobs:
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
-          path: ${{ runner.temp }}/ardali-pages
+          path: ${{ runner.temp }}/dalinira-pages
 
   deploy:
     name: Deploy website to GitHub Pages

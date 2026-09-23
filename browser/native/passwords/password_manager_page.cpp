@@ -380,7 +380,7 @@ PasswordManagerPage::PasswordManagerPage(CredentialVaultManager *vault,
     #password-manager-page QMenu::separator { height:1px; background:#334155; margin:6px 8px; }
   )"));
   auto *layout = new QVBoxLayout(this); layout->setContentsMargins(24, 24, 24, 24); layout->setSpacing(12);
-  auto *kicker = new QLabel(QStringLiteral("ArDali güvenli kasa"), this); kicker->setStyleSheet("color:#aebdcd;font-size:12px;font-weight:600;"); layout->addWidget(kicker);
+  auto *kicker = new QLabel(QStringLiteral("DaliNira güvenli kasa"), this); kicker->setStyleSheet("color:#aebdcd;font-size:12px;font-weight:600;"); layout->addWidget(kicker);
   auto *title = new QLabel(QStringLiteral("Şifre Yöneticisi"), this); title->setStyleSheet("font-size:24px;font-weight:700;color:#eaf2ff;"); layout->addWidget(title);
   status_ = new QLabel(this); status_->setWordWrap(true); layout->addWidget(status_);
   connect(vault_, &CredentialVaultManager::lockStateChanged, this, &PasswordManagerPage::refresh);
@@ -454,7 +454,7 @@ void PasswordManagerPage::requestCachedFavicon(QLabel *label, const QString &ori
       });
 }
 void PasswordManagerPage::showConsent() {
-  status_->setText(QStringLiteral("ArDali güvenli kasa"));
+  status_->setText(QStringLiteral("DaliNira güvenli kasa"));
   auto *card = new ConsentCard(this);
   card->setObjectName(QStringLiteral("vault-consent-card"));
   card->setMinimumWidth(660);
@@ -498,7 +498,7 @@ void PasswordManagerPage::showConsent() {
   noticeScroll->setFixedHeight(200);
   noticeScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   noticeScroll->setStyleSheet(QStringLiteral("QScrollArea{background:#17202b;border:1px solid #34506b;border-radius:10px;} QScrollBar:vertical{width:12px;background:#101722;border-radius:5px;} QScrollBar::handle:vertical{min-height:28px;background:#4a6580;border-radius:5px;}"));
-  auto *notice = new QLabel(QStringLiteral("Yerel parola kasası bildirimi\n\n• Kaydedilen site adresleri, kullanıcı adları ve parolalar yalnızca bu cihazdaki şifrelenmiş kasada tutulur.\n\n• Kayıtlar ArDali sunucusuna gönderilmez ve cihazlar arasında eşitlenmez.\n\n• Kasa, ana parolanızla korunur. Ana parolanızı unutursanız kayıtlar kurtarılamaz; geliştirici arka kapısı yoktur.\n\n• Hiçbir güvenlik sistemi mutlak koruma sağlamaz. Zararlı yazılım veya ele geçirilmiş bir cihaz risk oluşturmaya devam eder.\n\n• Özelliği istediğiniz zaman devre dışı bırakabilirsiniz. Devre dışı bırakmak kasayı silmez; kalıcı silme için ayrıca onay istenir.\n\n• Bu deneysel özellik bankacılık, devlet, birincil e-posta veya kripto hesapları için henüz önerilmez."), noticeScroll);
+  auto *notice = new QLabel(QStringLiteral("Yerel parola kasası bildirimi\n\n• Kaydedilen site adresleri, kullanıcı adları ve parolalar yalnızca bu cihazdaki şifrelenmiş kasada tutulur.\n\n• Kayıtlar DaliNira sunucusuna gönderilmez ve cihazlar arasında eşitlenmez.\n\n• Kasa, ana parolanızla korunur. Ana parolanızı unutursanız kayıtlar kurtarılamaz; geliştirici arka kapısı yoktur.\n\n• Hiçbir güvenlik sistemi mutlak koruma sağlamaz. Zararlı yazılım veya ele geçirilmiş bir cihaz risk oluşturmaya devam eder.\n\n• Özelliği istediğiniz zaman devre dışı bırakabilirsiniz. Devre dışı bırakmak kasayı silmez; kalıcı silme için ayrıca onay istenir.\n\n• Bu deneysel özellik bankacılık, devlet, birincil e-posta veya kripto hesapları için henüz önerilmez."), noticeScroll);
   notice->setObjectName(QStringLiteral("vault-notice"));
   notice->setWordWrap(true);
   notice->setAlignment(Qt::AlignTop | Qt::AlignLeft);
@@ -816,15 +816,15 @@ void PasswordManagerPage::createVault() {
   if (!vault_->createVault(name, master)) QMessageBox::warning(this, QStringLiteral("Yeni kasa"), vault_->lastError());
 }
 void PasswordManagerPage::exportBackup() {
-  QString path = QFileDialog::getSaveFileName(this, QStringLiteral("Şifre kasalarını yedekle"), QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QStringLiteral("/ardali-kasalar.ardali-vault-backup"), QStringLiteral("ArDali kasa yedeği (*.ardali-vault-backup)"));
+  QString path = QFileDialog::getSaveFileName(this, QStringLiteral("Şifre kasalarını yedekle"), QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QStringLiteral("/dalinira-kasalar.dalinira-vault-backup"), QStringLiteral("DaliNira kasa yedeği (*.dalinira-vault-backup)"));
   if (path.isEmpty()) return;
-  if (!path.endsWith(QStringLiteral(".ardali-vault-backup"), Qt::CaseInsensitive)) path += QStringLiteral(".ardali-vault-backup");
+  if (!path.endsWith(QStringLiteral(".dalinira-vault-backup"), Qt::CaseInsensitive)) path += QStringLiteral(".dalinira-vault-backup");
   bool ok = false; const QString password = QInputDialog::getText(this, QStringLiteral("Yedek parolası"), QStringLiteral("Yedek dosyası için güçlü parola"), QLineEdit::Password, {}, &ok); if (!ok || password.isEmpty()) return;
   const QString confirmation = QInputDialog::getText(this, QStringLiteral("Yedek parolası"), QStringLiteral("Yedek parolasını onayla"), QLineEdit::Password, {}, &ok); if (!ok || password != confirmation || !CredentialVaultManager::isStrongMasterPassword(password)) { QMessageBox::warning(this, QStringLiteral("Yedek al"), QStringLiteral("Yedek parolası güvenlik kurallarını karşılamıyor veya eşleşmiyor.")); return; }
   if (!vault_->exportBackup(path, password)) QMessageBox::warning(this, QStringLiteral("Yedek al"), vault_->lastError()); else status_->setText(QStringLiteral("Şifreli kasa yedeği oluşturuldu: %1").arg(path));
 }
 void PasswordManagerPage::importBackup() {
-  const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Kasa yedeğini içe aktar"), QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation), QStringLiteral("ArDali kasa yedeği (*.ardali-vault-backup)")); if (path.isEmpty()) return;
+  const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Kasa yedeğini içe aktar"), QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation), QStringLiteral("DaliNira kasa yedeği (*.dalinira-vault-backup)")); if (path.isEmpty()) return;
   bool ok = false; const QString password = QInputDialog::getText(this, QStringLiteral("Yedekten içe aktar"), QStringLiteral("Yedek parolası"), QLineEdit::Password, {}, &ok); if (!ok || password.isEmpty()) return;
   QStringList imported; if (!vault_->importBackup(path, password, &imported)) QMessageBox::warning(this, QStringLiteral("Yedekten içe aktar"), vault_->lastError()); else statusMessage_ = QStringLiteral("Yedekten içe aktarılan kasalar: %1").arg(imported.join(QStringLiteral(", ")));
 }

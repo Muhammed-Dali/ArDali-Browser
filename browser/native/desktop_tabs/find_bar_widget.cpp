@@ -4,7 +4,7 @@
 #include <QIcon>
 #include <QStyle>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 FindBarWidget::FindBarWidget(QWidget *parent)
     : QWidget(parent) {
@@ -13,7 +13,7 @@ FindBarWidget::FindBarWidget(QWidget *parent)
 }
 
 void FindBarWidget::setupUi() {
-  setObjectName(QStringLiteral("ardaliFindBar"));
+  setObjectName(QStringLiteral("daliniraFindBar"));
   setAttribute(Qt::WA_StyledBackground, true);
 
   auto *layout = new QHBoxLayout(this);
@@ -63,7 +63,7 @@ void FindBarWidget::setupUi() {
 
 void FindBarWidget::applyStyle() {
   setStyleSheet(QStringLiteral(
-      "#ardaliFindBar {"
+      "#daliniraFindBar {"
       "  background-color: #1b232d;"
       "  border: 1px solid #3a4857;"
       "  border-radius: 8px;"
@@ -213,4 +213,4 @@ void FindBarWidget::keyPressEvent(QKeyEvent *event) {
   QWidget::keyPressEvent(event);
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

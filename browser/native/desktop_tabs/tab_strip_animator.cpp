@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 TabStripAnimator::TabStripAnimator(QObject *parent)
     : QObject(parent) {
@@ -347,5 +347,5 @@ void TabStripAnimator::onTick() {
   }
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 

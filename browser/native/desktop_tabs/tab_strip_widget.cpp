@@ -20,14 +20,14 @@
 #include <QWheelEvent>
 #include <algorithm>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 TabStripWidget::TabStripWidget(QWidget *parent)
     : QWidget(parent) {
   setAttribute(Qt::WA_Hover, true);
   setMouseTracking(true);
   // Native Wayland cross-toplevel dragging is delivered as QDrag events.
-  // The controller's application event filter consumes only ArDali's private
+  // The controller's application event filter consumes only DaliNira's private
   // MIME type, so unrelated URL/file drops remain unaffected.
   setAcceptDrops(true);
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -63,7 +63,7 @@ TabStripWidget::~TabStripWidget() {
 void TabStripWidget::loadSettings() {
   const QString styleValue = QSettings().value(
       QStringLiteral("browser/tabStyle"),
-      tabStylePreferenceValue(TabStyle::ArDaliConnected)).toString();
+      tabStylePreferenceValue(TabStyle::DaliNiraConnected)).toString();
   setTabStyle(tabStyleFromPreference(styleValue));
 }
 
@@ -633,7 +633,7 @@ void TabStripWidget::paintEvent(QPaintEvent *) {
       painter.setPen(Qt::NoPen);
       painter.setBrush(QColor(0, 0, 0, 110));
       painter.translate(0, 3);
-      if (tabStyle_ == TabStyle::ArDaliConnected) {
+      if (tabStyle_ == TabStyle::DaliNiraConnected) {
         const QRectF surface = tabSurfaceRect(r, tabStyle_, true);
         QPainterPath body;
         body.addRoundedRect(surface, appearance.hoverCornerRadius,
@@ -663,12 +663,12 @@ void TabStripWidget::paintEvent(QPaintEvent *) {
     } else {
       painter.save();
       QPen outlinePen(appearance.outline,
-                      tabStyle_ == TabStyle::ArDaliConnected ? 2.4 : 1.0);
+                      tabStyle_ == TabStyle::DaliNiraConnected ? 2.4 : 1.0);
       outlinePen.setCapStyle(Qt::RoundCap);
       outlinePen.setJoinStyle(Qt::RoundJoin);
       painter.setPen(appearance.outline.alpha() > 0 ? outlinePen : QPen(Qt::NoPen));
       painter.setBrush(appearance.activeFill);
-      if (tabStyle_ == TabStyle::ArDaliConnected) {
+      if (tabStyle_ == TabStyle::DaliNiraConnected) {
         const QRectF surface = tabSurfaceRect(r, tabStyle_, true);
         QPainterPath body;
         body.addRoundedRect(surface, appearance.hoverCornerRadius,
@@ -1170,4 +1170,4 @@ void TabStripWidget::contextMenuEvent(QContextMenuEvent *event) {
   }
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

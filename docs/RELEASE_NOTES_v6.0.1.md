@@ -1,13 +1,13 @@
-# ArDali Browser 6.0.1
+# DaliNira Browser 6.0.1
 
 Released on 24 August 2026.
 
-ArDali Browser 6.0.1 is a maintenance release focused on release automation,
+DaliNira Browser 6.0.1 is a maintenance release focused on release automation,
 Arch Linux integration, and clear product documentation.
 
 ## Highlights
 
-- Clarifies that ArDali Blocker is ArDali Browser's built-in advertising and
+- Clarifies that DaliNira Blocker is DaliNira Browser's built-in advertising and
   tracker protection engine, implemented as part of the native browser.
 - Keeps bundled third-party filter data, generated rulesets, scriptlets, and
   resources attributed separately in `browser/resources/adblock/NOTICE.txt`.
@@ -24,6 +24,6 @@ verified.
 
 ## License and third-party components
 
-ArDali Browser remains licensed under GPL-3.0-only. Third-party filter and
+DaliNira Browser remains licensed under GPL-3.0-only. Third-party filter and
 ruleset resources retain their respective copyright and license notices in
 `browser/resources/adblock/NOTICE.txt`.

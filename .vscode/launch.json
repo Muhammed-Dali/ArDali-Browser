@@ -2,17 +2,17 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "ArDaliBrowser (F5 ile Çalıştır)",
+      "name": "DaliNiraBrowser (F5 ile Çalıştır)",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/build/ardali-browser",
+      "program": "${workspaceFolder}/build/dalinira-browser",
       "args": [],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}/build",
       "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
-      "preLaunchTask": "ArDali: Build Browser"
+      "preLaunchTask": "DaliNira: Build Browser"
     }
   ]
 }

@@ -70,7 +70,7 @@ QString playerHtml(const LocalMediaOpenRequest &request, const QUrl &mediaUrl) {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src file:; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <style>html,body{height:100%;margin:0;background:#0d1319;color:#edf3f8;font-family:system-ui,sans-serif}body{display:grid;place-items:center}.shell{width:min(980px,92vw);text-align:center}.art{margin:auto auto 24px;width:220px;height:220px;overflow:hidden;border-radius:24px;background:linear-gradient(145deg,#244b69,#101820);display:grid;place-items:center;font-size:62px;color:#8ac7f8;box-shadow:0 18px 50px #0008}.art img{width:100%;height:100%;object-fit:cover}.title{font-size:20px;font-weight:700;margin:0 0 8px}.kind{color:#8da1b2;margin:0 0 22px}.audio{width:min(720px,90vw)}.video{display:block;margin:auto;width:min(1100px,92vw);max-height:78vh;background:#000;border-radius:12px}.video-mode .shell{width:min(1200px,94vw)}.video-mode .art{position:fixed;top:24px;right:28px;width:180px;height:102px;margin:0;border-radius:12px;z-index:2;font-size:34px}.video-mode .title{margin-top:0}.video-mode .kind{margin-bottom:16px}@media(max-width:900px){.video-mode .art{top:14px;right:14px;width:128px;height:72px}}#error{color:#ff9aa5;margin-top:16px}</style></head><body class="%7-mode"><main class="shell"><div class="art"><img id="cover" hidden alt="Albüm kapağı"><span id="cover-placeholder">%1</span></div><h1 class="title">%2</h1><p class="kind">%3</p><%4 id="media" class="%5" src="%6" controls autoplay preload="metadata"></%4><p id="error" hidden>Bu medya biçimi veya codec bu sistemde oynatılamıyor.</p></main><script>const m=document.getElementById('media'),e=document.getElementById('error');m.addEventListener('error',()=>e.hidden=false);m.play().catch(()=>{});</script></body></html>)HTML")
       .arg(audio ? QStringLiteral("♫") : QStringLiteral("▶"), title,
-           audio ? QStringLiteral("ArDali Ses Oynatıcı") : QStringLiteral("ArDali Video Oynatıcı"),
+           audio ? QStringLiteral("DaliNira Ses Oynatıcı") : QStringLiteral("DaliNira Video Oynatıcı"),
            element, mediaClass, source, mediaClass);
 }
 
@@ -158,7 +158,7 @@ void LocalMediaPlayerPage::loadMedia(const LocalMediaOpenRequest &request) {
   effectsButton_->setVisible(true);
 
   const QUrl mediaUrl = QUrl::fromLocalFile(mediaPath_);
-  view_->setProperty("ardali-trusted-local-media", true);
+  view_->setProperty("dalinira-trusted-local-media", true);
   if (audioEffects_) audioEffects_->registerWebView(view_, mediaUrl);
   auto *page = static_cast<LockedLocalMediaPage *>(view_->page());
   page->prepareTrustedDocument(mediaUrl);

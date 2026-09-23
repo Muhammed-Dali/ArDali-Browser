@@ -8,7 +8,7 @@
 #include <chrono>
 #include <limits>
 
-namespace ardali {
+namespace dalinira {
 
 TabPerformanceManager::TabPerformanceManager(TabManager *tabManager, QObject *parent)
     : QObject(parent),
@@ -295,7 +295,7 @@ bool TabPerformanceManager::freezeTab(TabManager::TabId id) {
   record->page->setLifecycleState(QWebEnginePage::LifecycleState::Frozen);
 
   it->lifecycleState = QWebEnginePage::LifecycleState::Frozen;
-  it->frozenByArDali = true;
+  it->frozenByDaliNira = true;
   it->lastFreezeMonotonicMs = now;
   it->freezeCount++;
 
@@ -401,8 +401,8 @@ bool TabPerformanceManager::discardTab(TabManager::TabId id) {
   record->page->setLifecycleState(QWebEnginePage::LifecycleState::Discarded);
 
   it->lifecycleState = QWebEnginePage::LifecycleState::Discarded;
-  it->discardedByArDali = true;
-  it->frozenByArDali = false;
+  it->discardedByDaliNira = true;
+  it->frozenByDaliNira = false;
   it->lastDiscardMonotonicMs = now;
   it->discardCount++;
 
@@ -438,8 +438,8 @@ bool TabPerformanceManager::resumeTab(TabManager::TabId id) {
   record->page->setLifecycleState(QWebEnginePage::LifecycleState::Active);
 
   it->lifecycleState = QWebEnginePage::LifecycleState::Active;
-  it->frozenByArDali = false;
-  it->discardedByArDali = false;
+  it->frozenByDaliNira = false;
+  it->discardedByDaliNira = false;
   it->lastResumeMonotonicMs = now;
 
   if (wasDiscarded) {
@@ -855,10 +855,10 @@ void TabPerformanceManager::onPageLifecycleStateChanged(QWebEnginePage::Lifecycl
 
   it->lifecycleState = state;
   if (state != QWebEnginePage::LifecycleState::Frozen) {
-    it->frozenByArDali = false;
+    it->frozenByDaliNira = false;
   }
   if (state != QWebEnginePage::LifecycleState::Discarded) {
-    it->discardedByArDali = false;
+    it->discardedByDaliNira = false;
   }
   const TabManager::TabRecord *record = tabManager_ ? tabManager_->record(id) : nullptr;
   recomputeProtectedReasons(it.value(), record);
@@ -940,10 +940,10 @@ bool TabPerformanceManager::isSupportedWebScheme(const QUrl &url) {
     return false;
   }
   const QString host = url.host().toLower();
-  if (host == QLatin1String("newtab") || host == QLatin1String("ardali-browser.local") ||
+  if (host == QLatin1String("newtab") || host == QLatin1String("dalinira-browser.local") ||
       (url.isLocalFile() && url.path().contains(QStringLiteral("/assets/new-tab/"))) ||
       url.toString().startsWith(QLatin1String("about:")) ||
-      url.toString().startsWith(QLatin1String("ardali:")) ||
+      url.toString().startsWith(QLatin1String("dalinira:")) ||
       url.toString().startsWith(QLatin1String("chrome:")) ||
       url.toString().startsWith(QLatin1String("qrc:"))) {
     return false;
@@ -1101,4 +1101,4 @@ void TabPerformanceManager::onDeadlineTimeout() {
   scheduleNextDeadlineCheck();
 }
 
-} // namespace ardali
+} // namespace dalinira

@@ -27,7 +27,7 @@
 
 namespace {
 
-constexpr auto kArDaliDesktopFile = "ardali.desktop";
+constexpr auto kDaliNiraDesktopFile = "dalinira.desktop";
 constexpr auto kDefaultBrowserPromptDisabled = "browser/defaultBrowserPromptDisabled";
 constexpr auto kDefaultBrowserLastPromptUtc = "browser/defaultBrowserLastPromptUtc";
 
@@ -41,7 +41,7 @@ void openDefaultApplicationsSettings(QWidget *parent) {
 #endif
   QMessageBox::information(parent, QStringLiteral("Varsayılan tarayıcı"),
       QStringLiteral("Sistem Ayarları > Öntanımlı Uygulamalar bölümünden "
-                     "web tarayıcısı olarak ArDali'yi seçin."));
+                     "web tarayıcısı olarak DaliNira'yi seçin."));
 }
 
 void verifyDefaultBrowser(QWidget *parent) {
@@ -52,14 +52,14 @@ void verifyDefaultBrowser(QWidget *parent) {
                    [parent, verify](int exitCode, QProcess::ExitStatus exitStatus) {
     const QString desktopFile = QString::fromUtf8(verify->readAllStandardOutput()).trimmed();
     const bool accepted = exitStatus == QProcess::NormalExit && exitCode == 0
-        && desktopFile == QString::fromLatin1(kArDaliDesktopFile);
+        && desktopFile == QString::fromLatin1(kDaliNiraDesktopFile);
     verify->deleteLater();
     if (accepted) {
       QSettings settings;
       settings.remove(QString::fromLatin1(kDefaultBrowserPromptDisabled));
       settings.remove(QString::fromLatin1(kDefaultBrowserLastPromptUtc));
       QMessageBox::information(parent, QStringLiteral("Varsayılan tarayıcı"),
-          QStringLiteral("ArDali varsayılan web tarayıcısı yapıldı."));
+          QStringLiteral("DaliNira varsayılan web tarayıcısı yapıldı."));
     } else {
       openDefaultApplicationsSettings(parent);
     }
@@ -71,7 +71,7 @@ void requestDefaultBrowser(QWidget *parent) {
   auto *setDefault = new QProcess(parent);
   setDefault->setProgram(QStringLiteral("/usr/bin/xdg-settings"));
   setDefault->setArguments({QStringLiteral("set"), QStringLiteral("default-web-browser"),
-                            QString::fromLatin1(kArDaliDesktopFile)});
+                            QString::fromLatin1(kDaliNiraDesktopFile)});
   QObject::connect(setDefault, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), parent,
                    [parent, setDefault](int exitCode, QProcess::ExitStatus exitStatus) {
     const bool commandSucceeded = exitStatus == QProcess::NormalExit && exitCode == 0;
@@ -88,8 +88,8 @@ void requestDefaultBrowser(QWidget *parent) {
 
 void showDefaultBrowserPrompt(QWidget *parent) {
   auto *dialog = new QMessageBox(QMessageBox::Question,
-      QStringLiteral("ArDali'yi varsayılan tarayıcı yap"),
-      QStringLiteral("Web bağlantıları ArDali ile açılsın mı?\n\n"
+      QStringLiteral("DaliNira'yi varsayılan tarayıcı yap"),
+      QStringLiteral("Web bağlantıları DaliNira ile açılsın mı?\n\n"
                      "Bu seçim yalnızca web bağlantılarını etkiler; müzik, video ve PDF "
                      "uygulamalarınız değiştirilmez."),
       QMessageBox::NoButton, parent);
@@ -131,7 +131,7 @@ void checkDefaultBrowser(QWidget *parent) {
                    [parent, check](int exitCode, QProcess::ExitStatus exitStatus) {
     const QString desktopFile = QString::fromUtf8(check->readAllStandardOutput()).trimmed();
     const bool alreadyDefault = exitStatus == QProcess::NormalExit && exitCode == 0
-        && desktopFile == QString::fromLatin1(kArDaliDesktopFile);
+        && desktopFile == QString::fromLatin1(kDaliNiraDesktopFile);
     check->deleteLater();
     if (!alreadyDefault) showDefaultBrowserPrompt(parent);
   });
@@ -154,20 +154,20 @@ int main(int argc, char *argv[]) {
   // Configure WebEngine subprocess allocator policy (MALLOC_ARENA_MAX=2, MALLOC_TRIM_THRESHOLD=128KB)
   // before QtWebEngine process is spawned.
   const QString appDir = QFileInfo(QString::fromLocal8Bit(argv[0])).dir().absolutePath();
-  ardali::WebEngineMemoryPolicy::configureSubprocessLauncher(appDir);
+  dalinira::WebEngineMemoryPolicy::configureSubprocessLauncher(appDir);
 
   // Initialize hardware video decoding and GPU flags early before QApplication / QtWebEngine init
-  ardali::WebEngineHardwareAcceleration::initializeEarlyRuntime();
+  dalinira::WebEngineHardwareAcceleration::initializeEarlyRuntime();
 
-  // Register ardali:// URL scheme before QGuiApplication
-  registerArdaliUrlSchemes();
+  // Register dalinira:// URL scheme before QGuiApplication
+  registerDaliNiraUrlSchemes();
 
   QApplication app(argc, argv);
-  ardali::application_identity::apply();
-  app.setApplicationVersion(QStringLiteral(ARDALI_BROWSER_VERSION));
+  dalinira::application_identity::apply();
+  app.setApplicationVersion(QStringLiteral(DALINIRA_BROWSER_VERSION));
 
   // Initialize central i18n / multi-language system
-  ardali::i18n::LanguageManager::instance().initialize();
+  dalinira::i18n::LanguageManager::instance().initialize();
 
   const QIcon appIcon = BrowserIcons::appIcon();
   if (!appIcon.isNull()) {
@@ -197,7 +197,7 @@ int main(int argc, char *argv[]) {
   const QString installedPolicyPath = QCoreApplication::applicationDirPath() + QStringLiteral("/browser_policy.json");
   const QString policyPath = QFileInfo::exists(installedPolicyPath)
       ? installedPolicyPath
-      : QStringLiteral(ARDALI_BROWSER_POLICY_PATH);
+      : QStringLiteral(DALINIRA_BROWSER_POLICY_PATH);
   const BrowserPolicy policy = BrowserPolicy::load(policyPath, &policyError);
 
   const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -212,7 +212,7 @@ int main(int argc, char *argv[]) {
   auto *songFinderSettings = new SongFinderSettings(&app);
   auto *songRecognition = new SongRecognitionService(songFinderSettings, &app);
   auto *mediaDownload = new MediaDownloadService(dataDir, &app);
-  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+  if (qEnvironmentVariableIntValue("DALINIRA_FEATURE_DIAGNOSTICS") == 1) {
     auto *diagnostics = new PerformanceDiagnostics(
         &tabManager, profileService.adBlockService(), audioEffects, songRecognition, &app);
     diagnostics->start();
@@ -231,7 +231,7 @@ int main(int argc, char *argv[]) {
   services.mediaDownload = mediaDownload;
 
   // Wire TabDragController delegates for Chromium parity tab dragging
-  auto &dragController = ardali::desktop_tabs::TabDragController::instance();
+  auto &dragController = dalinira::desktop_tabs::TabDragController::instance();
 
   dragController.setDetachedWindowFactory(
       [services](QWidget *originWin, uint64_t /*tabId*/) -> QWidget * {
@@ -292,7 +292,7 @@ int main(int argc, char *argv[]) {
     const QUrl candidate = QUrl::fromUserInput(argument);
     const QString scheme = candidate.scheme().toLower();
     if (candidate.isValid() && (scheme == QLatin1String("http") || scheme == QLatin1String("https")
-                                || scheme == QLatin1String("ardali"))) {
+                                || scheme == QLatin1String("dalinira"))) {
       window->openStartupUrl(candidate);
       break;
     }

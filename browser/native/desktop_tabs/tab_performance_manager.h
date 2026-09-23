@@ -17,7 +17,7 @@
 #include "system_memory_pressure_monitor.h"
 #include "tab_manager.h"
 
-namespace ardali {
+namespace dalinira {
 
 /**
  * @brief Categorized reasons why a tab is protected from aggressive lifecycle actions.
@@ -78,8 +78,8 @@ struct TabPerformanceMetadata {
   uint32_t restoreCount = 0;
   bool visible = false;
   bool recentlyAudible = false;
-  bool frozenByArDali = false;
-  bool discardedByArDali = false;
+  bool frozenByDaliNira = false;
+  bool discardedByDaliNira = false;
   bool formDirty = false;
   bool allowlisted = false;
   quint64 activationSerial = 0;
@@ -185,8 +185,8 @@ class TabPerformanceManager : public QObject {
   void setTabPinned(TabManager::TabId id, bool pinned);
 
  signals:
-  void tabMetadataChanged(TabManager::TabId id, const ardali::TabPerformanceMetadata &metadata);
-  void tabProtectionChanged(TabManager::TabId id, bool isProtected, ardali::ProtectedReasons reasons);
+  void tabMetadataChanged(TabManager::TabId id, const dalinira::TabPerformanceMetadata &metadata);
+  void tabProtectionChanged(TabManager::TabId id, bool isProtected, dalinira::ProtectedReasons reasons);
   void tabRecentlyAudibleChanged(TabManager::TabId id, bool audible);
   void tabRecommendedStateChanged(TabManager::TabId id, QWebEnginePage::LifecycleState state);
   void tabLifecycleStateChanged(TabManager::TabId id, QWebEnginePage::LifecycleState state);
@@ -196,7 +196,7 @@ class TabPerformanceManager : public QObject {
   void tabRestored(TabManager::TabId id);
   void tabFormDirtyChanged(TabManager::TabId id, bool dirty);
   void siteAllowlistChanged(const QStringList &patterns);
-  void policyModeChanged(ardali::PerformancePolicyMode mode);
+  void policyModeChanged(dalinira::PerformancePolicyMode mode);
   void discardEnabledChanged(bool enabled);
 
  public slots:
@@ -243,4 +243,4 @@ class TabPerformanceManager : public QObject {
   QHash<TabManager::TabId, bool> explicitFormDirty_;
 };
 
-} // namespace ardali
+} // namespace dalinira

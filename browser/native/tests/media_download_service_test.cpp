@@ -1,4 +1,5 @@
 #include "media_download_service.h"
+#include "adult_content_protection.h"
 #include "security_utils.h"
 
 #include <QCoreApplication>
@@ -47,7 +48,7 @@ int main(int argc, char **argv) {
   QCoreApplication app(argc, argv);
   QString reason;
   assert(MediaDownloadService::isSupportedMediaUrl(QUrl(QStringLiteral("https://example.com/watch?v=1")), &reason));
-  assert(!MediaDownloadService::isSupportedMediaUrl(QUrl(QStringLiteral("ardali://settings")), &reason));
+  assert(!MediaDownloadService::isSupportedMediaUrl(QUrl(QStringLiteral("dalinira://settings")), &reason));
   assert(!MediaDownloadService::isSupportedMediaUrl(QUrl(QStringLiteral("file:///tmp/video.mp4")), &reason));
   assert(!MediaDownloadService::isSupportedMediaUrl(QUrl(QStringLiteral("https://user:pass@example.com/video")), &reason));
   assert(BrowserSecurity::sanitizeDownloadFileName(QStringLiteral("../../CON")) == QStringLiteral("download"));
@@ -59,6 +60,12 @@ int main(int argc, char **argv) {
       {"format_id":"v1080","ext":"mp4","height":1080,"fps":60,"vcodec":"avc1.640028","acodec":"none","filesize_approx":10485760},
       {"format_id":"mux720","ext":"mp4","height":720,"fps":30,"vcodec":"avc1.4d401f","acodec":"mp4a.40.2","filesize":5242880},
       {"format_id":"a1","ext":"m4a","vcodec":"none","acodec":"mp4a.40.2","abr":128,"filesize":1048576}
+    ]})JSON";
+  QByteArray redirectedMetadata = R"JSON({
+    "id":"redirect-fixture","title":"Redirected Fixture","extractor_key":"Fixture",
+    "webpage_url":"https://adult-test.example/redirected","formats":[
+      {"format_id":"redirect-video","ext":"mp4","height":720,"vcodec":"avc1","acodec":"mp4a",
+       "url":"https://cdn.example/media.mp4"}
     ]})JSON";
   MediaAnalysisResult parsed;
   assert(MediaDownloadService::parseAnalysisJson(metadata, QUrl(QStringLiteral("https://example.com/watch?v=1")), &parsed, &reason));
@@ -80,18 +87,22 @@ int main(int argc, char **argv) {
   assert(QDir().mkpath(outputDir));
   assert(QFile::setPermissions(binDir, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
   const QString fixtureOutput = QDir(outputDir).filePath(QStringLiteral("Fixture Video [fixture-id].mp4"));
-  qputenv("ARDALI_MEDIA_TEST_SECRET", QByteArrayLiteral("must-not-reach-helper"));
+  const QString invocationLog = QDir(temporary.path()).filePath(QStringLiteral("yt-dlp-invocations.log"));
+  qputenv("DALINIRA_MEDIA_TEST_SECRET", QByteArrayLiteral("must-not-reach-helper"));
   QByteArray script = QByteArrayLiteral("#!/bin/sh\n")
-      + QByteArrayLiteral("if [ -n \"$ARDALI_MEDIA_TEST_SECRET\" ]; then exit 91; fi\n")
+      + QByteArrayLiteral("if [ -n \"$DALINIRA_MEDIA_TEST_SECRET\" ]; then exit 91; fi\n")
+      + QByteArrayLiteral("printf 'invoked\\n' >> '") + invocationLog.toUtf8() + QByteArrayLiteral("'\n")
       + QByteArrayLiteral("for arg in \"$@\"; do case \"$arg\" in *cancel-fixture*) sleep 10; exit 0;; esac; done\n")
+      + QByteArrayLiteral("for arg in \"$@\"; do case \"$arg\" in *redirect-fixture*) printf '%s\\n' '")
+      + redirectedMetadata.replace('\n', ' ') + QByteArrayLiteral("'; exit 0;; esac; done\n")
       + QByteArrayLiteral("for arg in \"$@\"; do if [ \"$arg\" = \"--dump-single-json\" ]; then printf '%s\\n' '")
       + metadata.replace('\n', ' ') + QByteArrayLiteral("'; exit 0; fi; done\n")
       + QByteArrayLiteral("target=''\nlink_file=''\ncapture_link_path=0\nprev=''\n")
       + QByteArrayLiteral("for arg in \"$@\"; do if [ \"$capture_link_path\" = 1 ]; then link_file=\"$arg\"; capture_link_path=0; fi; if [ \"$prev\" = \"--print-to-file\" ] && [ \"$arg\" = \"webpage_url\" ]; then capture_link_path=1; fi; if [ \"$prev\" = \"-P\" ]; then target=\"$arg\"; fi; prev=\"$arg\"; done\n")
       + QByteArrayLiteral("if [ -n \"$link_file\" ]; then printf '%s\\n' 'https://example.com/playlist-item' > \"$link_file\"; exit 0; fi\n")
-      + QByteArrayLiteral("printf 'ARDALI_PROGRESS:42.5%%|425|1000|100|6\\n'\n")
-      + QByteArrayLiteral("printf 'ARDALI_POST:started\\n'\n")
-      + QByteArrayLiteral("file=\"$target/Fixture Video [fixture-id].mp4\"\n: > \"$file\"\nprintf 'ARDALI_FILE:%s\\n' \"$file\"\n");
+      + QByteArrayLiteral("printf 'DALINIRA_PROGRESS:42.5%%|425|1000|100|6\\n'\n")
+      + QByteArrayLiteral("printf 'DALINIRA_POST:started\\n'\n")
+      + QByteArrayLiteral("file=\"$target/Fixture Video [fixture-id].mp4\"\n: > \"$file\"\nprintf 'DALINIRA_FILE:%s\\n' \"$file\"\n");
   const QString ytDlp = createExecutable(QDir(binDir).filePath(QStringLiteral("yt-dlp")), script);
   const QString legacyYtDlp = createExecutable(QDir(binDir).filePath(QStringLiteral("ytdlp")), script);
   const QString ffmpeg = createExecutable(QDir(binDir).filePath(QStringLiteral("ffmpeg")), QByteArrayLiteral("#!/bin/sh\nexit 0\n"));
@@ -104,8 +115,14 @@ int main(int argc, char **argv) {
   assert(QFileInfo(service.ytDlpPath()).isAbsolute());
 
   bool analysisReady = false;
+  MediaAnalysisResult normalAnalysis;
   QObject::connect(&service, &MediaDownloadService::analysisReady, &app,
-                   [&](const MediaAnalysisResult &result) { analysisReady = result.title == QStringLiteral("Fixture Video"); });
+                   [&](const MediaAnalysisResult &result) {
+    if (result.title == QStringLiteral("Fixture Video")) {
+      analysisReady = true;
+      if (normalAnalysis.url.isEmpty()) normalAnalysis = result;
+    }
+  });
   assert(service.analyze(QUrl(QStringLiteral("https://example.com/watch?v=1"))));
   assert(waitFor([&] { return analysisReady; }));
   const QString trustedDeno = BrowserSecurity::resolveTrustedExecutable(QStringLiteral("deno"));
@@ -116,6 +133,50 @@ int main(int argc, char **argv) {
         || runtime == QStringLiteral("node:") + trustedNode);
     assert(QFileInfo(runtime.section(QLatin1Char(':'), 1)).isAbsolute());
   }
+
+  auto &adultProtection = dalinira::core::AdultContentProtectionService::instance();
+  adultProtection.clear();
+  adultProtection.clearAllowlist();
+  adultProtection.loadFromLines({QStringLiteral("adult-test.example")});
+  const QUrl blockedUrl(QStringLiteral("https://adult-test.example/watch?v=blocked"));
+  const qint64 invocationsBeforeBlocked = QFileInfo(invocationLog).size();
+  bool blockedAnalysisStarted = false;
+  QString blockedAnalysisError;
+  const QMetaObject::Connection blockedStartedConnection = QObject::connect(
+      &service, &MediaDownloadService::analysisStarted, &app,
+      [&](const QUrl &url) { if (url == blockedUrl) blockedAnalysisStarted = true; });
+  const QMetaObject::Connection blockedErrorConnection = QObject::connect(
+      &service, &MediaDownloadService::analysisFailed, &app,
+      [&](const QString &message) { blockedAnalysisError = message; });
+  assert(!service.analyze(blockedUrl, true));
+  assert(!blockedAnalysisStarted);
+  assert(blockedAnalysisError
+      == QStringLiteral("Yetişkin İçerik Koruması bu bağlantının analiz edilmesini engelledi."));
+  assert(QFileInfo(invocationLog).size() == invocationsBeforeBlocked);
+  QObject::disconnect(blockedStartedConnection);
+  QObject::disconnect(blockedErrorConnection);
+
+  analysisReady = false;
+  assert(service.analyze(blockedUrl, false));
+  assert(waitFor([&] { return analysisReady; }));
+
+  bool redirectedReady = false;
+  QString redirectedError;
+  const QMetaObject::Connection redirectReadyConnection = QObject::connect(
+      &service, &MediaDownloadService::analysisReady, &app,
+      [&](const MediaAnalysisResult &result) {
+    if (result.title == QStringLiteral("Redirected Fixture")) redirectedReady = true;
+  });
+  const QMetaObject::Connection redirectErrorConnection = QObject::connect(
+      &service, &MediaDownloadService::analysisFailed, &app,
+      [&](const QString &message) { redirectedError = message; });
+  assert(service.analyze(QUrl(QStringLiteral("https://example.com/redirect-fixture")), true));
+  assert(waitFor([&] { return !redirectedError.isEmpty(); }));
+  assert(!redirectedReady);
+  assert(redirectedError
+      == QStringLiteral("Yetişkin İçerik Koruması bu bağlantının analiz edilmesini engelledi."));
+  QObject::disconnect(redirectReadyConnection);
+  QObject::disconnect(redirectErrorConnection);
 
   MediaDownloadRequest request;
   request.url = QUrl(QStringLiteral("https://example.com/watch?q=kept&code=synthetic-code&text=%24%28touch%20never%29"));
@@ -128,6 +189,44 @@ int main(int argc, char **argv) {
   request.formatExtension = QStringLiteral("mp4");
   request.formatHasAudio = false;
   request.estimatedBytes = 2048;
+
+  MediaDownloadRequest blockedContextRequest = request;
+  blockedContextRequest.url = QUrl(QStringLiteral("https://cdn.example/allowed-media.mp4"));
+  blockedContextRequest.adultProtectionContextUrl = blockedUrl;
+  blockedContextRequest.adultContentProtectionEnabled = true;
+  QString blockedDownloadError;
+  assert(service.enqueue(blockedContextRequest, &blockedDownloadError).isNull());
+  assert(blockedDownloadError
+      == QStringLiteral("Yetişkin İçerik Koruması bu indirmenin başlatılmasını engelledi."));
+
+  MediaDownloadRequest blockedFinalRequest = request;
+  blockedFinalRequest.url = QUrl(QStringLiteral("https://example.com/final-url-check"));
+  blockedFinalRequest.adultProtectionContextUrl = blockedFinalRequest.url;
+  blockedFinalRequest.adultProtectionUrls = {QUrl(QStringLiteral("https://adult-test.example/final.mp4"))};
+  blockedFinalRequest.adultContentProtectionEnabled = true;
+  blockedDownloadError.clear();
+  assert(service.enqueue(blockedFinalRequest, &blockedDownloadError).isNull());
+  assert(!blockedDownloadError.isEmpty());
+
+  MediaDownloadRequest incompleteFinalRequest = request;
+  incompleteFinalRequest.adultContentProtectionEnabled = true;
+  incompleteFinalRequest.adultProtectionUrlsComplete = false;
+  blockedDownloadError.clear();
+  assert(service.enqueue(incompleteFinalRequest, &blockedDownloadError).isNull());
+  assert(!blockedDownloadError.isEmpty());
+
+  MediaDownloadRequest normalProtectedRequest = request;
+  normalProtectedRequest.url = QUrl(QStringLiteral("https://example.com/normal-protected"));
+  normalProtectedRequest.adultProtectionContextUrl = normalAnalysis.adultProtectionContextUrl;
+  normalProtectedRequest.adultProtectionUrls = normalAnalysis.adultProtectionUrls;
+  normalProtectedRequest.adultContentProtectionEnabled = true;
+  assert(!service.enqueue(normalProtectedRequest).isNull());
+
+  MediaDownloadRequest protectionOffRequest = blockedContextRequest;
+  protectionOffRequest.url = QUrl(QStringLiteral("https://cdn.example/protection-off.mp4"));
+  protectionOffRequest.adultContentProtectionEnabled = false;
+  const QUuid protectionOffId = service.enqueue(protectionOffRequest);
+  assert(!protectionOffId.isNull());
   const QStringList args = MediaDownloadService::buildDownloadArguments(request, ffmpeg);
   assert(args.contains(request.url.toString(QUrl::FullyEncoded)));
   assert(args.contains(QStringLiteral("--no-config")));
@@ -209,6 +308,15 @@ int main(int argc, char **argv) {
   }));
   assert(QFileInfo::exists(fixtureOutput));
   assert(sawDownloadProgress && sawMerging);
+  assert(waitFor([&] {
+    for (const auto &job : service.jobs()) if (job.id == protectionOffId)
+      return job.state == MediaDownloadState::Completed;
+    return false;
+  }));
+  blockedDownloadError.clear();
+  assert(service.retry(protectionOffId, true, &blockedDownloadError).isNull());
+  assert(blockedDownloadError
+      == QStringLiteral("Yetişkin İçerik Koruması bu indirmenin başlatılmasını engelledi."));
 
   convertedAudioRequest.url = QUrl(QStringLiteral("https://example.com/audio-convert"));
   convertedAudioRequest.targetDirectory = outputDir;

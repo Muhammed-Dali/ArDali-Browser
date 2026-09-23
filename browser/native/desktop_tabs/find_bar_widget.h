@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_FIND_BAR_WIDGET_H_
-#define ARDALI_DESKTOP_TABS_FIND_BAR_WIDGET_H_
+#ifndef DALINIRA_DESKTOP_TABS_FIND_BAR_WIDGET_H_
+#define DALINIRA_DESKTOP_TABS_FIND_BAR_WIDGET_H_
 
 #include <QWidget>
 #include <QLineEdit>
@@ -8,7 +8,7 @@
 #include <QHBoxLayout>
 #include <QKeyEvent>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 class FindBarWidget : public QWidget {
   Q_OBJECT
@@ -51,6 +51,6 @@ class FindBarWidget : public QWidget {
   QToolButton *closeBtn_ = nullptr;
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_FIND_BAR_WIDGET_H_
+#endif  // DALINIRA_DESKTOP_TABS_FIND_BAR_WIDGET_H_

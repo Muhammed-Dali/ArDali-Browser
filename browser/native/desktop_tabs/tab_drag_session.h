@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_DRAG_SESSION_H_
-#define ARDALI_DESKTOP_TABS_TAB_DRAG_SESSION_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_DRAG_SESSION_H_
+#define DALINIRA_DESKTOP_TABS_TAB_DRAG_SESSION_H_
 
 #include <QObject>
 #include <QPoint>
@@ -11,7 +11,7 @@
 #include "tab_layout_model.h"
 #include "tab_strip_widget.h"
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 class TabDragSession {
  public:
@@ -109,6 +109,6 @@ class TabDragSession {
   uint64_t sessionId_ = 0;
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_DRAG_SESSION_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_DRAG_SESSION_H_

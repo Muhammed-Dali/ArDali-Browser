@@ -28,24 +28,24 @@ const evaluate = async expression => {
 socket.onopen = async () => {
   try {
     await call('Runtime.enable');
-    await evaluate(`new Promise((resolve,reject)=>{const started=Date.now();const check=()=>{if(document.getElementById('search-suggestions')&&typeof window.ardaliShowSuggestions==='function')resolve(true);else if(Date.now()-started>5000)reject(new Error('current suggestion UI missing'));else setTimeout(check,50)};check()})`);
+    await evaluate(`new Promise((resolve,reject)=>{const started=Date.now();const check=()=>{if(document.getElementById('search-suggestions')&&typeof window.daliniraShowSuggestions==='function')resolve(true);else if(Date.now()-started>5000)reject(new Error('current suggestion UI missing'));else setTimeout(check,50)};check()})`);
     const result = await evaluate(`new Promise(resolve=>{
       const input=document.getElementById('query');
       const list=document.getElementById('search-suggestions');
       input.focus();
-      input.value='ardali';
+      input.value='dalinira';
       input.dispatchEvent(new Event('input',{bubbles:true}));
       const rows=[
-        {type:'history',text:'ArDali History',url:'https://history.example/'},
-        {type:'remote',text:'ArDali Remote',url:'https://search.example/?q=ardali'}
+        {type:'history',text:'DaliNira History',url:'https://history.example/'},
+        {type:'remote',text:'DaliNira Remote',url:'https://search.example/?q=dalinira'}
       ];
       // The matching generation is accepted; stale generations must be ignored.
-      for(let id=0;id<32;id++)window.ardaliShowSuggestions(id,'ardali',rows);
+      for(let id=0;id<32;id++)window.daliniraShowSuggestions(id,'dalinira',rows);
       const shown={hidden:list.hidden,count:list.querySelectorAll('.suggestion-row').length,expanded:input.getAttribute('aria-expanded')};
       input.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
       const escaped={hidden:list.hidden,expanded:input.getAttribute('aria-expanded')};
       input.focus();input.dispatchEvent(new Event('input',{bubbles:true}));
-      for(let id=0;id<32;id++)window.ardaliShowSuggestions(id,'ardali',rows);
+      for(let id=0;id<32;id++)window.daliniraShowSuggestions(id,'dalinira',rows);
       input.dispatchEvent(new FocusEvent('blur'));
       setTimeout(()=>resolve({shown,escaped,blurred:{hidden:list.hidden,expanded:input.getAttribute('aria-expanded')}}),20);
     })`);

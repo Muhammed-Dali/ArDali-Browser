@@ -5,7 +5,7 @@
 #include <QStringList>
 #include <QUrl>
 
-namespace ardali::core {
+namespace dalinira::core {
 
 struct ExtractedHostTokens {
   QString primaryDomainToken;
@@ -36,4 +36,4 @@ class DomainNormalizer {
       bool &outIsExactSubdomain);
 };
 
-}  // namespace ardali::core
+}  // namespace dalinira::core

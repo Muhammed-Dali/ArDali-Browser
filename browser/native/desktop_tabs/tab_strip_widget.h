@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_STRIP_WIDGET_H_
-#define ARDALI_DESKTOP_TABS_TAB_STRIP_WIDGET_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_STRIP_WIDGET_H_
+#define DALINIRA_DESKTOP_TABS_TAB_STRIP_WIDGET_H_
 
 #include <QIcon>
 #include <QElapsedTimer>
@@ -18,7 +18,7 @@
 #include "tab_strip_animator.h"
 #include "tab_group_model.h"
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 class TabStripWidget : public QWidget {
   Q_OBJECT
@@ -134,7 +134,7 @@ class TabStripWidget : public QWidget {
   QPoint dragOffsetInTab_;
   std::optional<QPoint> draggedTopLeft_;
 
-  TabStyle tabStyle_ = TabStyle::ArDaliConnected;
+  TabStyle tabStyle_ = TabStyle::DaliNiraConnected;
   TabLayoutModel layoutModel_;
   TabStripAnimator animator_;
 
@@ -163,6 +163,6 @@ class TabStripWidget : public QWidget {
   qreal hoverOpacity(uint64_t tabId) const;
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_STRIP_WIDGET_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_STRIP_WIDGET_H_

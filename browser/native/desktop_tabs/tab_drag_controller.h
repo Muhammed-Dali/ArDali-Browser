@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_DRAG_CONTROLLER_H_
-#define ARDALI_DESKTOP_TABS_TAB_DRAG_CONTROLLER_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_DRAG_CONTROLLER_H_
+#define DALINIRA_DESKTOP_TABS_TAB_DRAG_CONTROLLER_H_
 
 #include <QObject>
 #include <QEvent>
@@ -17,7 +17,7 @@
 #include "tab_drag_types.h"
 #include "tab_window_registry.h"
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 class TabStripWidget;
 
@@ -111,6 +111,6 @@ class TabDragController : public QObject {
   uint64_t initialTabId_ = 0;
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_DRAG_CONTROLLER_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_DRAG_CONTROLLER_H_

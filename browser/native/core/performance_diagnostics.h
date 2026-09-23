@@ -3,7 +3,7 @@
 #include <QObject>
 #include <QTimer>
 
-class ArDaliBlockerService;
+class DaliNiraBlockerService;
 class SongRecognitionService;
 class TabManager;
 class WebAudioEffectsController;
@@ -12,7 +12,7 @@ class PerformanceDiagnostics final : public QObject {
   Q_OBJECT
 
  public:
-  PerformanceDiagnostics(TabManager *tabManager, ArDaliBlockerService *blocker,
+  PerformanceDiagnostics(TabManager *tabManager, DaliNiraBlockerService *blocker,
                          WebAudioEffectsController *audio,
                          SongRecognitionService *songFinder,
                          QObject *parent = nullptr);
@@ -22,7 +22,7 @@ class PerformanceDiagnostics final : public QObject {
 
  private:
   TabManager *tabManager_ = nullptr;
-  ArDaliBlockerService *blocker_ = nullptr;
+  DaliNiraBlockerService *blocker_ = nullptr;
   WebAudioEffectsController *audio_ = nullptr;
   SongRecognitionService *songFinder_ = nullptr;
   QTimer reportTimer_;

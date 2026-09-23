@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
   if (!directory.isValid()) return 1;
   QSettings::setDefaultFormat(QSettings::IniFormat);
   QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, directory.path());
-  QCoreApplication::setOrganizationName(QStringLiteral("ArDaliTest"));
+  QCoreApplication::setOrganizationName(QStringLiteral("DaliNiraTest"));
   QCoreApplication::setApplicationName(QStringLiteral("WebAudioEffectsPersistence"));
 
   {
@@ -809,7 +809,7 @@ int main(int argc, char *argv[]) {
       page.resize(1920, 950);
       page.show();
       app.processEvents();
-      const QString screenshotPath = qEnvironmentVariable("ARDALI_EQ_PRESET_SCREENSHOT_PATH");
+      const QString screenshotPath = qEnvironmentVariable("DALINIRA_EQ_PRESET_SCREENSHOT_PATH");
       if (!screenshotPath.isEmpty() && !page.grab().save(screenshotPath)) return 1;
       QListView *list = page.findChild<QListView *>(QStringLiteral("eq-preset-list"));
       if (!list || !clickListIndex(list, list->model()->index(1, 0))) return 1;

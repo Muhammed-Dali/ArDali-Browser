@@ -635,7 +635,7 @@ void AudioEffectsPage::createEqualizerPage() {
   auto *toneLayout = new QVBoxLayout(toneCard);
   toneLayout->setContentsMargins(20, 16, 20, 16);
   toneLayout->setSpacing(10);
-  auto *moduleTitle = label(QStringLiteral("ArDali Modülü"), toneCard, QStringLiteral("audio-effects-card-title"));
+  auto *moduleTitle = label(QStringLiteral("DaliNira Modülü"), toneCard, QStringLiteral("audio-effects-card-title"));
   moduleTitle->setAlignment(Qt::AlignCenter);
   toneLayout->addWidget(moduleTitle);
   auto *dialRow = new QHBoxLayout;

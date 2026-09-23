@@ -1,8 +1,8 @@
-# ArDali Browser 7.2.0
+# DaliNira Browser 7.2.0
 
 Released on 21 September 2026.
 
-ArDali Browser 7.2.0 strengthens local credential security, improves translation
+DaliNira Browser 7.2.0 strengthens local credential security, improves translation
 and browser interaction reliability, and makes the native codebase easier to
 maintain and contribute to.
 
@@ -15,7 +15,7 @@ maintain and contribute to.
 
 ## Browser experience
 
-- Added the persistent **ArDali Bağlantılı** tab style as the new-profile default
+- Added the persistent **DaliNira Bağlantılı** tab style as the new-profile default
   and refined tab geometry, dragging, loading indicators, toolbar icons, keyboard
   shortcuts, and Reload/Stop feedback.
 - Expanded New Tab search and card controls and fixed secure custom-background
@@ -38,4 +38,4 @@ maintain and contribute to.
 
 Linux x86_64 remains the verified build, test, packaging, and release platform.
 The portable archive ships as
-`ardali-browser-7.2.0-linux-x86_64.tar.zst`.
+`dalinira-browser-7.2.0-linux-x86_64.tar.zst`.

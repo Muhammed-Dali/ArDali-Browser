@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem in ArDali Browser
+description: Report a reproducible problem in DaliNira Browser
 title: "[Bug]: "
 labels: ["bug", "needs-triage"]
 body:
@@ -15,7 +15,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: ArDali Browser version
+      label: DaliNira Browser version
       placeholder: "7.2.0"
     validations:
       required: true

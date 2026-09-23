@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_GROUP_POPUP_H_
-#define ARDALI_DESKTOP_TABS_TAB_GROUP_POPUP_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_GROUP_POPUP_H_
+#define DALINIRA_DESKTOP_TABS_TAB_GROUP_POPUP_H_
 
 #include <QLineEdit>
 #include <QPushButton>
@@ -9,7 +9,7 @@
 
 #include "tab_group_model.h"
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 class TabGroupPopup : public QWidget {
   Q_OBJECT
@@ -42,6 +42,6 @@ class TabGroupPopup : public QWidget {
   QVector<QPushButton *> colorButtons_;
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_GROUP_POPUP_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_GROUP_POPUP_H_

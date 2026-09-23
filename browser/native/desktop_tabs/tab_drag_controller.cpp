@@ -14,13 +14,13 @@
 #include <cstdlib>
 #include <utility>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 static bool isDiagnosticsEnabled() {
   static const bool enabled = qEnvironmentVariableIntValue(
-                                  "ARDALI_DESKTOP_TAB_DIAGNOSTICS") == 1 ||
+                                  "DALINIRA_DESKTOP_TAB_DIAGNOSTICS") == 1 ||
                               qEnvironmentVariableIntValue(
-                                  "ARDALI_TAB_DIAGNOSTICS") == 1;
+                                  "DALINIRA_TAB_DIAGNOSTICS") == 1;
   return enabled;
 }
 
@@ -412,7 +412,7 @@ void TabDragController::performDetach(const QPoint &globalPos) {
       if (!screen) screen = originWindow->screen();
       const QRect avail = screen ? screen->availableGeometry() : QRect(0, 0, 1920, 1080);
       QSize restoredSize;
-      const QVariant customRestored = originWindow->property("ardaliRestoredSize");
+      const QVariant customRestored = originWindow->property("daliniraRestoredSize");
       if (customRestored.isValid() && customRestored.toSize().isValid() &&
           customRestored.toSize().width() >= 600 && customRestored.toSize().height() >= 400) {
         restoredSize = customRestored.toSize();
@@ -575,7 +575,7 @@ void TabDragController::attachToTargetAt(
   bool transferred = false;
   QWidget *const oldWindow = session_.currentWindow();
   const bool oldWindowWasCaptureShell =
-      oldWindow && oldWindow->property("ardaliDragCaptureShell").toBool();
+      oldWindow && oldWindow->property("daliniraDragCaptureShell").toBool();
   if (transferDelegate_) {
     transferred = transferDelegate_(oldWindow, targetWindow, session_.tabItem().tabId, targetIndex);
   }
@@ -720,7 +720,7 @@ void TabDragController::cancelDrag() {
     restored = transferDelegate_ && transferDelegate_(
         currentWindow, sourceWindow, session_.tabItem().tabId,
         session_.sourceTabIndex());
-    if (restored && currentWindow->property("ardaliDragCaptureShell").toBool()) {
+    if (restored && currentWindow->property("daliniraDragCaptureShell").toBool()) {
       detachedWindowController_.finalizeDetachedWindow();
       currentWindow->close();
     }
@@ -769,4 +769,4 @@ void TabDragController::cleanUpCursorState() {
   }
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

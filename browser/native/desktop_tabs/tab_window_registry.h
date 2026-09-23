@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_WINDOW_REGISTRY_H_
-#define ARDALI_DESKTOP_TABS_TAB_WINDOW_REGISTRY_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_WINDOW_REGISTRY_H_
+#define DALINIRA_DESKTOP_TABS_TAB_WINDOW_REGISTRY_H_
 
 #include <QList>
 #include <QObject>
@@ -7,7 +7,7 @@
 #include <QPointer>
 #include <QWidget>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 class TabStripWidget;
 
@@ -43,6 +43,6 @@ class TabWindowRegistry : public QObject {
   QList<RegisteredWindow> windows_;
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_WINDOW_REGISTRY_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_WINDOW_REGISTRY_H_

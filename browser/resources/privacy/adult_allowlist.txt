@@ -1,0 +1,5 @@
+# DaliNira Adult Content Protection Allowlist
+# Format: canonical domain per line.
+# Lines starting with # and empty lines are ignored.
+# Domains in this list bypass Adult Content Protection (e.g. false positives).
+# Domain boundary rules apply: listed domain and all its subdomains are allowed.

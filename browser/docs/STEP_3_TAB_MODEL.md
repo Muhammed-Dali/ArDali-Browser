@@ -13,5 +13,5 @@ detached state, and order.
 - A native window has at most one active record.
 - Detach/attach changes the owner record; it does not create a new page.
 
-`ardali-browser-tab-manager-test` covers owner transfer, active state,
+`dalinira-browser-tab-manager-test` covers owner transfer, active state,
 detached state, ordering, and invariant validation without navigation.

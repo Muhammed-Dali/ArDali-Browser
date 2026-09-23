@@ -17,18 +17,18 @@
 #include <QWebEngineView>
 #include <QWebEngineFullScreenRequest>
 
-namespace ardali::core {
+namespace dalinira::core {
 class INavigationCandidateProvider;
 }
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 class FindBarWidget;
 }
 
 #include "audio/audio_effects_page.h"
 #include "audio/web_audio_effects_controller.h"
-#include "blocker/ardali_blocker_page.h"
-#include "blocker/ardali_blocker_shield_button.h"
+#include "blocker/dalinira_blocker_page.h"
+#include "blocker/dalinira_blocker_shield_button.h"
 #include "core/browser_policy.h"
 #include "core/browser_profile_service.h"
 #include "desktop_tabs/tab_manager.h"
@@ -78,7 +78,7 @@ struct PendingPermissionRequest {
 };
 #endif
 
-class ArDaliBlockerService;
+class DaliNiraBlockerService;
 class CredentialVaultManager;
 class CredentialAutofillController;
 class SongFinderSettingsPage;
@@ -95,12 +95,12 @@ class DownloadUiModel;
 class DownloadPopup;
 class DownloadToolbarButton;
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 class TabStripWidget;
 class TabSearchPopup;
 class TabGroupPopup;
 class TabGroupLauncherPopup;
-} // namespace ardali::desktop_tabs
+} // namespace dalinira::desktop_tabs
 
 struct BrowserServices {
   std::shared_ptr<BrowserProfileService> privateProfileOwner;
@@ -153,7 +153,7 @@ public:
   const BrowserServices &services() const { return services_; }
 
   // Tab management
-  int addNewTab(const QUrl &url = QUrl(QStringLiteral("ardali://newtab/")),
+  int addNewTab(const QUrl &url = QUrl(QStringLiteral("dalinira://newtab/")),
                 int insertIndex = -1, bool initiallyPinned = false,
                 const QString &initialTitle = QString{});
   int addInternalTab(QWidget *page, const QString &title, const QIcon &icon,
@@ -191,7 +191,7 @@ public:
   void showReaderMode();
   void handleFullScreenRequest(QWebEngineView *view, const QWebEngineFullScreenRequest &request);
 
-  ardali::desktop_tabs::TabStripWidget *tabStrip() const { return tabStrip_; }
+  dalinira::desktop_tabs::TabStripWidget *tabStrip() const { return tabStrip_; }
   int tabCount() const { return tabs_.size(); }
   const BrowserTabInfo &tabInfo(int index) const { return tabs_[index]; }
   const QVector<BrowserTabInfo> &allTabs() const { return tabs_; }
@@ -199,7 +199,7 @@ public:
 
   QString currentSearchEngine() const;
   void navigateFromUserInput(const QString &rawInput, const QString &searchEngine = QString{});
-  ardali::core::INavigationCandidateProvider *candidateProvider() const { return candidateProvider_.get(); }
+  dalinira::core::INavigationCandidateProvider *candidateProvider() const { return candidateProvider_.get(); }
   void requestNewTabSuggestions(QWebEnginePage *page, const QString &query, int requestId);
   void setSearchEngine(const QString &engine);
   void syncNewTabViews();
@@ -210,7 +210,7 @@ public:
   void toggleTabSearchPopup();
 
   // Tab Groups
-  ardali::desktop_tabs::TabGroupModel *groupModel() const { return groupModel_; }
+  dalinira::desktop_tabs::TabGroupModel *groupModel() const { return groupModel_; }
   void toggleTabGroupLauncher();
   void createNewTabGroupWithNewTab();
   void createGroupFromExistingTab(uint64_t tabId);
@@ -220,7 +220,7 @@ public:
   void closeTabGroup(const QUuid &groupId);
   void ungroupTabs(const QUuid &groupId);
   void deleteTabGroup(const QUuid &groupId);
-  std::optional<ardali::desktop_tabs::TabGroup> groupForTab(uint64_t tabId) const;
+  std::optional<dalinira::desktop_tabs::TabGroup> groupForTab(uint64_t tabId) const;
 
   // Feature page navigations
   void showSettings(
@@ -228,8 +228,8 @@ public:
   void showPasswords();
   void showAudioEffects();
   void showEqPresetBrowser();
-  void showArDaliBlockerSettings(
-      ArDaliBlockerPage::Tab tab = ArDaliBlockerPage::Tab::Settings);
+  void showDaliNiraBlockerSettings(
+      DaliNiraBlockerPage::Tab tab = DaliNiraBlockerPage::Tab::Settings);
   void showSongFinder();
   void showSongFinderSettings();
   void showMediaDownloads(const QUrl &sourceUrl = {},
@@ -336,7 +336,7 @@ private:
   // Frameless Top Bar
   QWidget *topBar_ = nullptr;
   QToolButton *tabSearchBtn_ = nullptr;
-  ardali::desktop_tabs::TabStripWidget *tabStrip_ = nullptr;
+  dalinira::desktop_tabs::TabStripWidget *tabStrip_ = nullptr;
   QPointer<TabHoverCard> hoverCard_;
   QToolButton *minBtn_ = nullptr;
   QToolButton *maxBtn_ = nullptr;
@@ -363,10 +363,10 @@ private:
   QAction *searchEngineAction_ = nullptr;
   QToolBar *bookmarkBar_ = nullptr;
   QToolButton *appsBtn_ = nullptr;
-  QPointer<ardali::desktop_tabs::TabSearchPopup> tabSearchPopup_;
-  ardali::desktop_tabs::TabGroupModel *groupModel_ = nullptr;
-  QPointer<ardali::desktop_tabs::TabGroupPopup> tabGroupPopup_;
-  QPointer<ardali::desktop_tabs::TabGroupLauncherPopup> tabGroupLauncherPopup_;
+  QPointer<dalinira::desktop_tabs::TabSearchPopup> tabSearchPopup_;
+  dalinira::desktop_tabs::TabGroupModel *groupModel_ = nullptr;
+  QPointer<dalinira::desktop_tabs::TabGroupPopup> tabGroupPopup_;
+  QPointer<dalinira::desktop_tabs::TabGroupLauncherPopup> tabGroupLauncherPopup_;
   QProgressBar *progressBar_ = nullptr;
   QStackedWidget *pageStack_ = nullptr;
 
@@ -375,7 +375,7 @@ private:
   QFrame *zoomPopup_ = nullptr;
   QLabel *zoomPercent_ = nullptr;
   QToolButton *translateButton_ = nullptr;
-  ArDaliBlockerShieldButton *adBlockShield_ = nullptr;
+  DaliNiraBlockerShieldButton *adBlockShield_ = nullptr;
   PulseToolbarButton *pulseButton_ = nullptr;
   DownloadToolbarButton *mediaDownload_ = nullptr;
   DownloadUiModel *downloadUiModel_ = nullptr;
@@ -418,9 +418,9 @@ private:
   QRect lastNormalGeometry_{100, 100, 1280, 800};
   QUrl lastActiveWebUrl_;
 
-  std::unique_ptr<ardali::core::INavigationCandidateProvider> candidateProvider_;
+  std::unique_ptr<dalinira::core::INavigationCandidateProvider> candidateProvider_;
 
-  QPointer<ardali::desktop_tabs::FindBarWidget> findBar_;
+  QPointer<dalinira::desktop_tabs::FindBarWidget> findBar_;
   void updateFindBarPosition();
   void handleFindRequest(const QString &text, bool forward, bool caseSensitive);
   void handleClearFind();

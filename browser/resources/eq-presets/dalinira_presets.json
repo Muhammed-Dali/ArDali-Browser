@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "minDb": -12,
+  "maxDb": 12,
+  "presets": [
+    {
+      "id": "__dalinira_bass__",
+      "name": "DaliNira Bass",
+      "description": "Bas ağırlıklı, dengeli mid/treble",
+      "points": [
+        { "i": 0, "v": 5.5 },
+        { "i": 4, "v": 5.0 },
+        { "i": 7, "v": 4.2 },
+        { "i": 10, "v": 2.5 },
+        { "i": 14, "v": 0.0 },
+        { "i": 18, "v": -0.8 },
+        { "i": 22, "v": -0.2 },
+        { "i": 26, "v": 1.0 },
+        { "i": 31, "v": 1.2 }
+      ]
+    },
+    {
+      "id": "__dalinira_pop__",
+      "name": "DaliNira Pop",
+      "description": "Hafif V-shape; enerjik bas ve parlak tiz",
+      "points": [
+        { "i": 0, "v": 3.5 },
+        { "i": 5, "v": 3.2 },
+        { "i": 9, "v": 2.2 },
+        { "i": 14, "v": -1.2 },
+        { "i": 18, "v": -1.0 },
+        { "i": 22, "v": 0.8 },
+        { "i": 26, "v": 2.6 },
+        { "i": 31, "v": 3.0 }
+      ]
+    },
+    {
+      "id": "__dalinira_rock__",
+      "name": "DaliNira Rock",
+      "description": "Daha dolgun gitar/vokal; kontrollü parlaklık",
+      "points": [
+        { "i": 0, "v": 2.5 },
+        { "i": 5, "v": 2.2 },
+        { "i": 9, "v": 1.4 },
+        { "i": 13, "v": -0.5 },
+        { "i": 17, "v": 0.8 },
+        { "i": 20, "v": 1.6 },
+        { "i": 24, "v": 2.0 },
+        { "i": 31, "v": 1.6 }
+      ]
+    },
+    {
+      "id": "__dalinira_vocal__",
+      "name": "DaliNira Vocal",
+      "description": "Vokal ve konuşma netliği; mid/upper-mid öne çıkar",
+      "points": [
+        { "i": 0, "v": -0.8 },
+        { "i": 6, "v": -0.5 },
+        { "i": 10, "v": 0.0 },
+        { "i": 14, "v": 1.8 },
+        { "i": 18, "v": 3.2 },
+        { "i": 22, "v": 2.4 },
+        { "i": 26, "v": 1.0 },
+        { "i": 31, "v": 0.6 }
+      ]
+    },
+    {
+      "id": "__dalinira_jazz__",
+      "name": "DaliNira Jazz",
+      "description": "Sıcak ve doğal; yumuşak tiz",
+      "points": [
+        { "i": 0, "v": 1.8 },
+        { "i": 6, "v": 1.5 },
+        { "i": 10, "v": 1.0 },
+        { "i": 14, "v": 0.4 },
+        { "i": 18, "v": 0.8 },
+        { "i": 22, "v": 1.2 },
+        { "i": 27, "v": 1.6 },
+        { "i": 31, "v": 1.4 }
+      ]
+    },
+    {
+      "id": "__dalinira_classical__",
+      "name": "DaliNira Classical",
+      "description": "Daha nötr; sahne ve hava için hafif tiz artışı",
+      "points": [
+        { "i": 0, "v": 0.6 },
+        { "i": 8, "v": 0.2 },
+        { "i": 14, "v": 0.0 },
+        { "i": 18, "v": 0.6 },
+        { "i": 22, "v": 1.2 },
+        { "i": 26, "v": 2.0 },
+        { "i": 31, "v": 2.2 }
+      ]
+    },
+    {
+      "id": "__dalinira_electronic__",
+      "name": "DaliNira Electronic",
+      "description": "Güçlü sub-bass + parlak tiz; club hissi",
+      "points": [
+        { "i": 0, "v": 6.5 },
+        { "i": 4, "v": 6.0 },
+        { "i": 7, "v": 5.2 },
+        { "i": 12, "v": 1.2 },
+        { "i": 16, "v": -1.6 },
+        { "i": 20, "v": -1.2 },
+        { "i": 24, "v": 1.8 },
+        { "i": 28, "v": 3.2 },
+        { "i": 31, "v": 3.6 }
+      ]
+    },
+    {
+      "id": "__dalinira_bass_punch__",
+      "name": "DaliNira Bass Punch",
+      "description": "Tok vuruş ve kontrollü alt frekans",
+      "points": [{"i":0,"v":4.8},{"i":6,"v":4.2},{"i":10,"v":2.0},{"i":15,"v":-0.5},{"i":22,"v":0.0},{"i":31,"v":0.8}]
+    },
+    {
+      "id": "__dalinira_treble_detail__",
+      "name": "DaliNira Treble Detail",
+      "description": "Tiz ayrıntısı ve ferah üst frekanslar",
+      "points": [{"i":0,"v":-0.8},{"i":10,"v":-0.3},{"i":18,"v":0.8},{"i":23,"v":2.0},{"i":27,"v":3.0},{"i":31,"v":2.2}]
+    },
+    {
+      "id": "__dalinira_vocal_podcast__",
+      "name": "DaliNira Vocal Podcast",
+      "description": "Konuşma ve vokal için temiz orta frekanslar",
+      "points": [{"i":0,"v":-1.8},{"i":8,"v":-1.0},{"i":13,"v":1.0},{"i":18,"v":3.4},{"i":23,"v":2.0},{"i":31,"v":0.0}]
+    },
+    {
+      "id": "__dalinira_jazz_warm__",
+      "name": "DaliNira Jazz Warm",
+      "description": "Kontrbas ve akustik enstrümanlar için sıcak caz tonu",
+      "points": [{"i":0,"v":2.2},{"i":7,"v":1.8},{"i":13,"v":0.6},{"i":19,"v":1.0},{"i":25,"v":1.4},{"i":31,"v":0.8}]
+    },
+    {
+      "id": "__dalinira_classical_hall__",
+      "name": "DaliNira Classical Hall",
+      "description": "Orkestra sahnesi ve doğal klasik müzik dengesi",
+      "points": [{"i":0,"v":0.8},{"i":9,"v":0.2},{"i":16,"v":0.5},{"i":22,"v":1.4},{"i":27,"v":2.3},{"i":31,"v":1.8}]
+    },
+    {
+      "id": "__dalinira_electronic_club__",
+      "name": "DaliNira Electronic Club",
+      "description": "EDM için güçlü sub-bass ve canlı üst frekanslar",
+      "points": [{"i":0,"v":6.0},{"i":6,"v":5.0},{"i":12,"v":0.8},{"i":18,"v":-1.4},{"i":25,"v":2.6},{"i":31,"v":3.2}]
+    },
+    {
+      "id": "__dalinira_pop_bright__",
+      "name": "DaliNira Pop Bright",
+      "description": "Modern pop için enerjik ve berrak sunum",
+      "points": [{"i":0,"v":2.8},{"i":7,"v":2.2},{"i":15,"v":-0.8},{"i":21,"v":1.0},{"i":27,"v":2.8},{"i":31,"v":2.4}]
+    },
+    {
+      "id": "__dalinira_rock_live__",
+      "name": "DaliNira Rock Live",
+      "description": "Rock ve metal için vurucu davul, belirgin gitar",
+      "points": [{"i":0,"v":3.0},{"i":7,"v":2.4},{"i":13,"v":-0.4},{"i":18,"v":1.2},{"i":24,"v":2.5},{"i":31,"v":1.4}]
+    },
+    {
+      "id": "__dalinira_vshape_deep__",
+      "name": "DaliNira V-Shape Deep",
+      "description": "Derin bas, sakin mid ve parlak tiz",
+      "points": [{"i":0,"v":5.2},{"i":7,"v":4.0},{"i":14,"v":-1.8},{"i":19,"v":-1.2},{"i":26,"v":3.2},{"i":31,"v":4.0}]
+    },
+    {
+      "id": "__dalinira_flat_reference__",
+      "name": "DaliNira Flat Reference",
+      "description": "Düz ve nötr stüdyo referansı",
+      "points": [{"i":0,"v":0.0},{"i":31,"v":0.0}]
+    },
+    {
+      "id": "__dalinira_natural__",
+      "name": "DaliNira Natural",
+      "description": "Günlük dinleme için hafif ve doğal denge",
+      "points": [{"i":0,"v":1.0},{"i":8,"v":0.6},{"i":16,"v":0.0},{"i":23,"v":0.7},{"i":31,"v":0.4}]
+    }
+  ]
+}

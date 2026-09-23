@@ -1,8 +1,8 @@
-# ArDali Browser 7.1.0
+# DaliNira Browser 7.1.0
 
 Released on 13 September 2026.
 
-ArDali Browser 7.1.0 improves the New Tab search experience and strengthens
+DaliNira Browser 7.1.0 improves the New Tab search experience and strengthens
 the reliability of the Linux integration test suite.
 
 ## New Tab and search improvements
@@ -31,4 +31,4 @@ the reliability of the Linux integration test suite.
 
 Linux x86_64 remains the verified build, test, packaging, and release platform.
 The portable archive uses the existing `/usr` installation layout and ships as
-`ardali-browser-7.1.0-linux-x86_64.tar.zst`.
+`dalinira-browser-7.1.0-linux-x86_64.tar.zst`.

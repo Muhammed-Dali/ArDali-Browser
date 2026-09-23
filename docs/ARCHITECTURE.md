@@ -1,12 +1,12 @@
-# ArDali Browser Architecture Guide
+# DaliNira Browser Architecture Guide
 
-This document describes the software architecture, component relationships, lifecycle ownership, and security models of ArDali Browser.
+This document describes the software architecture, component relationships, lifecycle ownership, and security models of DaliNira Browser.
 
 ---
 
 ## 1. System Overview
 
-ArDali Browser is an independent desktop web browser built with **C++20** and **Qt 6**, using **Qt WebEngine** (Chromium) for web standards execution and rendering. It pairs Chromium's rendering capabilities with high-performance native C++ subsystems: an adaptive parallel download engine, a studio-grade 32-band Web Audio DSP equalizer, an encrypted zero-cloud credential vault, an ad/tracker privacy shield, and real-time audio recognition.
+DaliNira Browser is an independent desktop web browser built with **C++20** and **Qt 6**, using **Qt WebEngine** (Chromium) for web standards execution and rendering. It pairs Chromium's rendering capabilities with high-performance native C++ subsystems: an adaptive parallel download engine, a studio-grade 32-band Web Audio DSP equalizer, an encrypted zero-cloud credential vault, an ad/tracker privacy shield, and real-time audio recognition.
 
 ```mermaid
 graph TD
@@ -32,8 +32,8 @@ graph TD
     BW --> Tabs[Tab Instances: QWebEngineView / Native Pages]
 
     Tabs --> ExtPages[Web Content: HTTPS / HTTP]
-    Tabs --> NativePages[Native ardali:// Pages:\nsettings, passwords, downloads, etc.]
-    Tabs --> NewTab[ardali://newtab/\nQWebEngineUrlSchemeHandler]
+    Tabs --> NativePages[Native dalinira:// Pages:\nsettings, passwords, downloads, etc.]
+    Tabs --> NewTab[dalinira://newtab/\nQWebEngineUrlSchemeHandler]
 ```
 
 ---
@@ -43,9 +43,9 @@ graph TD
 Application initialization follows a strict order to ensure process memory limits, GPU capabilities, and security schemes are established before Chromium processes spawn:
 
 1. **Display & Coordinate Parity:** Detects Wayland sessions and configures `QT_QPA_PLATFORM=xcb` when required to guarantee coordinate parity during tab dragging and multi-window detaching.
-2. **Subprocess Allocator Policy (`ardali::WebEngineMemoryPolicy`):** Sets `MALLOC_ARENA_MAX=2` and `MALLOC_TRIM_THRESHOLD=128KB` before subprocess execution to prevent glibc heap fragmentation in renderers.
-3. **Hardware Acceleration Flags (`ardali::WebEngineHardwareAcceleration`):** Configures Chromium GPU flags (VA-API zero-copy video decoding, rasterization threads) prior to initializing `QApplication`.
-4. **URL Scheme Registration (`registerArdaliUrlSchemes()`):** Registers `ardali://` as a custom scheme with `SecureScheme | LocalScheme | LocalAccessAllowedScheme` prior to GUI construction.
+2. **Subprocess Allocator Policy (`dalinira::WebEngineMemoryPolicy`):** Sets `MALLOC_ARENA_MAX=2` and `MALLOC_TRIM_THRESHOLD=128KB` before subprocess execution to prevent glibc heap fragmentation in renderers.
+3. **Hardware Acceleration Flags (`dalinira::WebEngineHardwareAcceleration`):** Configures Chromium GPU flags (VA-API zero-copy video decoding, rasterization threads) prior to initializing `QApplication`.
+4. **URL Scheme Registration (`registerDaliNiraUrlSchemes()`):** Registers `dalinira://` as a custom scheme with `SecureScheme | LocalScheme | LocalAccessAllowedScheme` prior to GUI construction.
 5. **GUI Application Construction:** Instantiates `QApplication`, applies application identity metadata, sets application version, and initializes `LanguageManager`.
 6. **Theme & Palette:** Sets Qt `Fusion` style with an audiophile-dark palette (`#202124` background, `#18191c` base).
 7. **Policy Loading:** Loads `browser_policy.json` (defining navigation restrictions, popup rules, and download policies).
@@ -63,7 +63,7 @@ Application initialization follows a strict order to ensure process memory limit
 ## 3. Major Subsystems & Directory Layout
 
 ### Core Foundation (`browser/native/core/`)
-- `application_identity.h/.cpp`: Application branding, user-agent formatting, and desktop window class naming (`StartupWMClass=ArDaliBrowser`).
+- `application_identity.h/.cpp`: Application branding, user-agent formatting, and desktop window class naming (`StartupWMClass=DaliNiraBrowser`).
 - `browser_profile_service.h/.cpp`: Profile-level owner of browsing data (history SQLite, bookmarks JSON, site permissions JSON, search engine providers).
 - `web_engine_hardware_acceleration.h/.cpp`: Early GPU command-line configuration, hardware video decoding pipelines, and driver workarounds.
 - `web_engine_memory_policy.h/.cpp`: Subprocess memory trim policies and allocation tuning.
@@ -91,24 +91,24 @@ Application initialization follows a strict order to ensure process memory limit
 - `device_keyring.h/.cpp`: Linux FreeDesktop Secret Service (`org.freedesktop.secrets` / `libsecret-1`) integration binding vault wrap keys to local machine session credentials.
 - `credential_autofill_controller.h/.cpp`: Native autofill coordinator communicating with pages via `ApplicationWorld` scripts, issuing single-use fill tokens, and managing credential save flows.
 - `credential_save_bubble.h/.cpp`: Non-modal prompt widget offering "Kaydet" / "Şimdi Değil" after login submissions, bound to the verified original origin.
-- `password_manager_page.h/.cpp`: Native Qt UI (`ardali://passwords`) for searching, editing, copying, revealing, importing, and deleting credentials.
+- `password_manager_page.h/.cpp`: Native Qt UI (`dalinira://passwords`) for searching, editing, copying, revealing, importing, and deleting credentials.
 
 ### Audio DSP & AutoEQ (`browser/native/audio/` & `browser/native/eq/`)
 - `web_audio_effects_controller.h/.cpp`: Injects DALI Web Audio DSP nodes into media-playing pages: 32-band peaking equalizer, compressor, limiter, stereo widener, reverb, and noise gate.
 - `eq_preset_repository.h/.cpp`: High-performance JSON parser loading and caching 1,757 factory-calibrated AutoEQ headphone profiles.
-- `eq_preset_page.h/.cpp`: Native UI (`ardali://eq-presets`) for searching, auditioning, and applying headphone compensation profiles.
+- `eq_preset_page.h/.cpp`: Native UI (`dalinira://eq-presets`) for searching, auditioning, and applying headphone compensation profiles.
 
 ### Music Recognition / Pulse (`browser/native/pulse/`)
 - `song_recognition_service.h/.cpp`: Captures live 16 kHz mono audio via PulseAudio/PipeWire monitor sources or ALSA microphones, computes audio fingerprints, and matches tracks via Shazam API.
-- `song_finder_page.h/.cpp`: Native interface (`ardali://pulse` or `ardali://listen`) with spectrum visualizer and recognition history.
+- `song_finder_page.h/.cpp`: Native interface (`dalinira://pulse` or `dalinira://listen`) with spectrum visualizer and recognition history.
 
 ### Downloads Engine (`browser/native/downloads/`)
 - `general_download_manager.h/.cpp`: Segmented parallel HTTP/HTTPS downloader dynamically scaling from 1 to 2, 4, or 8 connections with chunk pre-allocation, work-stealing, and resume capabilities.
 - `media_download_service.h/.cpp`: Bounded `QProcess` wrapper executing `yt-dlp` and `ffmpeg` for media stream extraction, transcoding, and tagging.
-- `local_media_player_page.h/.cpp`: Native internal media player (`ardali://player`) routing downloaded files through the DALI audio DSP suite.
+- `local_media_player_page.h/.cpp`: Native internal media player (`dalinira://player`) routing downloaded files through the DALI audio DSP suite.
 
 ### Ad Blocker & Privacy Shield (`browser/native/blocker/`)
-- `ardali_blocker_engine.h/.cpp`: Request filtering engine evaluating EasyList, EasyPrivacy, and Peter Lowe rulesets.
+- `dalinira_blocker_engine.h/.cpp`: Request filtering engine evaluating EasyList, EasyPrivacy, and Peter Lowe rulesets.
 - Handles cosmetic CSS element hiding, scriptlet injection against anti-adblockers, query parameter stripping, and three protection levels (Basic, Balanced, Aggressive).
 
 ### Internationalization (`browser/native/i18n/`)
@@ -161,46 +161,46 @@ Use this practical directory and file reference to quickly find the code respons
 | **Change music recognition / Pulse** | `browser/native/pulse/song_recognition_service.cpp`, `browser/native/pulse/song_finder_page.cpp` |
 | **Change download engine or media downloads** | `browser/native/downloads/general_download_manager.cpp`, `browser/native/downloads/media_download_service.cpp` |
 | **Change Web Audio DSP, equalizer, or AutoEQ** | `browser/native/audio/web_audio_effects_controller.cpp`, `browser/native/eq/eq_preset_repository.cpp`, `browser/dali/` |
-| **Change ad and tracker blocking** | `browser/native/blocker/ardali_blocker_engine.cpp`, `browser/resources/adblock/` |
-| **Change internal `ardali://` pages** | `browser/native/browser_window.cpp` (`showSettings`, `showPasswords`, etc.), `browser/native/newtab/new_tab_scheme.cpp` |
+| **Change ad and tracker blocking** | `browser/native/blocker/dalinira_blocker_engine.cpp`, `browser/resources/adblock/` |
+| **Change internal `dalinira://` pages** | `browser/native/browser_window.cpp` (`showSettings`, `showPasswords`, etc.), `browser/native/newtab/new_tab_scheme.cpp` |
 | **Change session restore behavior** | `browser/native/session/session_store.cpp`, `browser/native/browser_window.cpp` (`saveSessionNow`, `restoreSession`) |
 | **Change language, translations, or RTL support** | `browser/native/i18n/language_manager.cpp`, `i18n/` catalogs |
 | **Change Omnibox search suggestions or candidate ranking** | `browser/native/core/address_input_resolver.cpp`, `browser/native/browser_window.cpp` |
 
 ---
 
-## 6. Internal `ardali://` Page Mechanism
+## 6. Internal `dalinira://` Page Mechanism
 
-ArDali routes internal URLs through two distinct mechanisms:
+DaliNira routes internal URLs through two distinct mechanisms:
 
 ### 1. Native Qt Widget Pages (Maximum Security)
 Pages containing sensitive settings or media playback controls are implemented as **native C++ `QWidget`s** rather than web pages:
-- `ardali://settings` -> `SettingsPage`
-- `ardali://passwords` -> `PasswordManagerPage`
-- `ardali://downloads` -> `MediaDownloadsPage`
-- `ardali://audio-effects` -> `WebAudioEffectsPanel`
-- `ardali://eq-presets` -> `EqPresetPage`
-- `ardali://pulse` / `ardali://listen` -> `SongFinderPage`
-- `ardali://player` -> `LocalMediaPlayerPage`
+- `dalinira://settings` -> `SettingsPage`
+- `dalinira://passwords` -> `PasswordManagerPage`
+- `dalinira://downloads` -> `MediaDownloadsPage`
+- `dalinira://audio-effects` -> `WebAudioEffectsPanel`
+- `dalinira://eq-presets` -> `EqPresetPage`
+- `dalinira://pulse` / `dalinira://listen` -> `SongFinderPage`
+- `dalinira://player` -> `LocalMediaPlayerPage`
 
 **Security Benefit:** Web content running in WebEngine renderers has zero access to native widget internals, preventing DOM-based privilege escalation or cross-origin attacks against browser configuration.
 
-### 2. Custom URL Scheme Pages (`ardali://newtab/`)
+### 2. Custom URL Scheme Pages (`dalinira://newtab/`)
 The New Tab page is served via `NewTabSchemeHandler` (`QWebEngineUrlSchemeHandler`):
-- Registered as an isolated scheme (`registerArdaliUrlSchemes()`).
+- Registered as an isolated scheme (`registerDaliNiraUrlSchemes()`).
 - HTML, CSS, and JS are bundled in `browser/native/newtab/new_tab_html.cpp`.
-- Search form submissions bridge into browser navigation via `ardali://navigate?q=...&engine=...`.
+- Search form submissions bridge into browser navigation via `dalinira://navigate?q=...&engine=...`.
 
 ---
 
 ## 7. Settings Storage Architecture
 
-ArDali Browser segregates user configuration based on sensitivity:
+DaliNira Browser segregates user configuration based on sensitivity:
 
 1. **`QSettings` (Standard Desktop INI / Config):**
-   - Location: `~/.config/ArDali/` or `~/.config/ArDaliBrowser/`.
+   - Location: `~/.config/DaliNira/` or `~/.config/DaliNiraBrowser/`.
    - Stores non-sensitive window/application preferences: window geometry, default browser prompts, language preference, theme, search engine selection.
-2. **Profile Application Data Directory (`~/.local/share/ArDali/ArDaliBrowser/`):**
+2. **Profile Application Data Directory (`~/.local/share/DaliNira/DaliNiraBrowser/`):**
    - Resolved via `QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)`.
    - `browser-preferences.ini`: Profile preferences, browsing history (`history/entries`, `history/frequentSites`), bookmarks (`bookmarks/items`), content settings, and origin permissions (`permissions/*`).
    - `tabs.session.json`: Window and tab state for session restore (v1 schema with active index, title, URL, pin state).

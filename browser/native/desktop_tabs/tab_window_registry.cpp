@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 TabWindowRegistry &TabWindowRegistry::instance() {
   static TabWindowRegistry s_instance;
@@ -50,20 +50,20 @@ void TabWindowRegistry::reloadTabAppearances() {
 RegisteredWindow TabWindowRegistry::findTargetAt(const QPoint &globalScreenPoint, QWidget *excludeWindow) const {
   QWidget *topExclude = excludeWindow ? excludeWindow->window() : nullptr;
   const QVariant sourceProfile = topExclude
-      ? topExclude->property("ardaliTabProfile") : QVariant{};
+      ? topExclude->property("daliniraTabProfile") : QVariant{};
   const QVariant sourceWindowType = topExclude
-      ? topExclude->property("ardaliTabWindowType") : QVariant{};
+      ? topExclude->property("daliniraTabWindowType") : QVariant{};
 
   for (const auto &entry : windows_) {
     if (!entry.window || !entry.tabStrip) continue;
     if (entry.window.data() == excludeWindow || entry.window->window() == topExclude) continue;
     if (!entry.window->isVisible() || entry.window->isMinimized()) continue;
-    if (entry.window->property("ardaliDragCaptureShell").toBool() ||
-        entry.window->property("ardaliTabClosing").toBool()) continue;
-    if (sourceProfile.isValid() && entry.window->property("ardaliTabProfile").isValid() &&
-        entry.window->property("ardaliTabProfile") != sourceProfile) continue;
-    if (sourceWindowType.isValid() && entry.window->property("ardaliTabWindowType").isValid() &&
-        entry.window->property("ardaliTabWindowType") != sourceWindowType) continue;
+    if (entry.window->property("daliniraDragCaptureShell").toBool() ||
+        entry.window->property("daliniraTabClosing").toBool()) continue;
+    if (sourceProfile.isValid() && entry.window->property("daliniraTabProfile").isValid() &&
+        entry.window->property("daliniraTabProfile") != sourceProfile) continue;
+    if (sourceWindowType.isValid() && entry.window->property("daliniraTabWindowType").isValid() &&
+        entry.window->property("daliniraTabWindowType") != sourceWindowType) continue;
 
     // The strip can live inside a scroller and may extend beyond the client
     // geometry reported for a frameless top-level window. Its mapped bounds
@@ -72,8 +72,8 @@ RegisteredWindow TabWindowRegistry::findTargetAt(const QPoint &globalScreenPoint
     const QRect dropBounds = entry.tabStrip->attachBoundary();
 
     if (dropBounds.contains(localPos)) {
-      if (qEnvironmentVariableIntValue("ARDALI_DESKTOP_TAB_DIAGNOSTICS") == 1 ||
-          qEnvironmentVariableIntValue("ARDALI_TAB_DIAGNOSTICS") == 1) {
+      if (qEnvironmentVariableIntValue("DALINIRA_DESKTOP_TAB_DIAGNOSTICS") == 1 ||
+          qEnvironmentVariableIntValue("DALINIRA_TAB_DIAGNOSTICS") == 1) {
         std::fprintf(stderr, "[REGISTRY] TargetFound window=%p strip=%p\n",
                      static_cast<void *>(entry.window.data()),
                      static_cast<void *>(entry.tabStrip.data()));
@@ -88,4 +88,4 @@ void TabWindowRegistry::clear() {
   windows_.clear();
 }
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs

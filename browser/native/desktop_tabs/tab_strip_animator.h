@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_STRIP_ANIMATOR_H_
-#define ARDALI_DESKTOP_TABS_TAB_STRIP_ANIMATOR_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_STRIP_ANIMATOR_H_
+#define DALINIRA_DESKTOP_TABS_TAB_STRIP_ANIMATOR_H_
 
 #include <QEasingCurve>
 #include <QElapsedTimer>
@@ -11,7 +11,7 @@
 
 #include "tab_drag_types.h"
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 struct AnimatedSlot {
   uint64_t tabId = 0;
@@ -99,6 +99,6 @@ class TabStripAnimator : public QObject {
   void ensureTimerRunning();
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_STRIP_ANIMATOR_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_STRIP_ANIMATOR_H_

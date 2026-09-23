@@ -7,7 +7,7 @@
 
 #include <cstring>
 
-#if defined(ARDALI_HAS_LIBSECRET)
+#if defined(DALINIRA_HAS_LIBSECRET)
 #pragma push_macro("signals")
 #pragma push_macro("slots")
 #undef signals
@@ -21,10 +21,10 @@ namespace {
 QMutex sMutex;
 std::shared_ptr<DeviceKeyring::Provider> sCustomProvider;
 
-#if defined(ARDALI_HAS_LIBSECRET)
-const SecretSchema *ardaliVaultSchema() {
+#if defined(DALINIRA_HAS_LIBSECRET)
+const SecretSchema *daliniraVaultSchema() {
   static const SecretSchema schema = {
-    "org.ardali.Browser.VaultDeviceSecret",
+    "org.dalinira.Browser.VaultDeviceSecret",
     SECRET_SCHEMA_NONE,
     {
       { "application", SECRET_SCHEMA_ATTRIBUTE_STRING },
@@ -40,7 +40,7 @@ const SecretSchema *ardaliVaultSchema() {
 class DefaultProvider final : public DeviceKeyring::Provider {
  public:
   bool isAvailable() const override {
-#if defined(ARDALI_HAS_LIBSECRET)
+#if defined(DALINIRA_HAS_LIBSECRET)
     auto bus = QDBusConnection::sessionBus();
     if (!bus.isConnected()) {
       return false;
@@ -56,20 +56,20 @@ class DefaultProvider final : public DeviceKeyring::Provider {
   }
 
   bool storeSecret(const QString &vaultKeyId, const QByteArray &secret) override {
-#if defined(ARDALI_HAS_LIBSECRET)
+#if defined(DALINIRA_HAS_LIBSECRET)
     if (!isAvailable() || vaultKeyId.isEmpty() || secret.isEmpty()) {
       return false;
     }
     const QByteArray b64 = secret.toBase64();
     GError *error = nullptr;
     const gboolean res = secret_password_store_sync(
-        ardaliVaultSchema(),
+        daliniraVaultSchema(),
         SECRET_COLLECTION_DEFAULT,
-        "ArDali Browser Vault Key",
+        "DaliNira Browser Vault Key",
         b64.constData(),
         nullptr,
         &error,
-        "application", "ardali-browser",
+        "application", "dalinira-browser",
         "vault_id", vaultKeyId.toUtf8().constData(),
         nullptr);
     if (error) {
@@ -85,16 +85,16 @@ class DefaultProvider final : public DeviceKeyring::Provider {
   }
 
   bool loadSecret(const QString &vaultKeyId, QByteArray *secret) override {
-#if defined(ARDALI_HAS_LIBSECRET)
+#if defined(DALINIRA_HAS_LIBSECRET)
     if (!secret || !isAvailable() || vaultKeyId.isEmpty()) {
       return false;
     }
     GError *error = nullptr;
     gchar *raw = secret_password_lookup_sync(
-        ardaliVaultSchema(),
+        daliniraVaultSchema(),
         nullptr,
         &error,
-        "application", "ardali-browser",
+        "application", "dalinira-browser",
         "vault_id", vaultKeyId.toUtf8().constData(),
         nullptr);
     if (error) {
@@ -117,16 +117,16 @@ class DefaultProvider final : public DeviceKeyring::Provider {
   }
 
   bool clearSecret(const QString &vaultKeyId) override {
-#if defined(ARDALI_HAS_LIBSECRET)
+#if defined(DALINIRA_HAS_LIBSECRET)
     if (!isAvailable() || vaultKeyId.isEmpty()) {
       return false;
     }
     GError *error = nullptr;
     const gboolean res = secret_password_clear_sync(
-        ardaliVaultSchema(),
+        daliniraVaultSchema(),
         nullptr,
         &error,
-        "application", "ardali-browser",
+        "application", "dalinira-browser",
         "vault_id", vaultKeyId.toUtf8().constData(),
         nullptr);
     if (error) {

@@ -1,5 +1,5 @@
-#ifndef ARDALI_DESKTOP_TABS_TAB_SEARCH_POPUP_H_
-#define ARDALI_DESKTOP_TABS_TAB_SEARCH_POPUP_H_
+#ifndef DALINIRA_DESKTOP_TABS_TAB_SEARCH_POPUP_H_
+#define DALINIRA_DESKTOP_TABS_TAB_SEARCH_POPUP_H_
 
 #include <QDateTime>
 #include <QIcon>
@@ -18,7 +18,7 @@
 
 class BrowserWindow;
 
-namespace ardali::desktop_tabs {
+namespace dalinira::desktop_tabs {
 
 struct TabSearchItem {
   enum class Type { OpenTab, ClosedTab };
@@ -73,6 +73,6 @@ class TabSearchPopup : public QWidget {
   int selectedIndex_ = -1;
 };
 
-}  // namespace ardali::desktop_tabs
+}  // namespace dalinira::desktop_tabs
 
-#endif  // ARDALI_DESKTOP_TABS_TAB_SEARCH_POPUP_H_
+#endif  // DALINIRA_DESKTOP_TABS_TAB_SEARCH_POPUP_H_

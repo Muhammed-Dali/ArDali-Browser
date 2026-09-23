@@ -9,7 +9,7 @@
 #include <algorithm>
 
 TabManager::TabManager(QObject *parent)
-    : QObject(parent), performanceManager_(std::make_unique<ardali::TabPerformanceManager>(this, nullptr)) {}
+    : QObject(parent), performanceManager_(std::make_unique<dalinira::TabPerformanceManager>(this, nullptr)) {}
 
 TabManager::~TabManager() = default;
 
@@ -254,6 +254,6 @@ bool TabManager::validate(QString *reason) const {
   return true;
 }
 
-ardali::TabPerformanceManager *TabManager::performanceManager() const {
+dalinira::TabPerformanceManager *TabManager::performanceManager() const {
   return performanceManager_.get();
 }
