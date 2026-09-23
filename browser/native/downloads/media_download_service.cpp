@@ -35,7 +35,15 @@ const QString kAdultProtectionDownloadMessage =
     QStringLiteral("Yetişkin İçerik Koruması bu indirmenin başlatılmasını engelledi.");
 
 bool isProtectedUrlBlocked(const QUrl &url) {
-  return url.isValid() && dalinira::core::AdultContentProtectionService::instance().isBlocked(url);
+  if (!url.isValid()) return false;
+  const QString scheme = url.scheme().toLower();
+  if (scheme != QLatin1String("http") && scheme != QLatin1String("https")) return false;
+
+  // Adult protection is a domain policy. Never classify the serialized URL:
+  // paths, queries, fragments, media ids, and metadata text are not domains.
+  const QString host = dalinira::core::AdultContentProtectionService::normalizeHost(url.host());
+  return !host.isEmpty()
+      && dalinira::core::AdultContentProtectionService::instance().isBlockedHost(host);
 }
 
 bool containsBlockedAdultUrl(const QUrl &contextUrl, const QVector<QUrl> &urls) {
@@ -50,18 +58,30 @@ void appendProtectionUrl(const QJsonValue &value, QVector<QUrl> *urls, QSet<QStr
                          bool *complete) {
   if (!urls || !seen || !complete || !value.isString()) return;
   const QUrl url(value.toString());
-  if (!url.isValid() || (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https"))
-      || url.host().isEmpty()) {
+  const QString scheme = url.scheme().toLower();
+  const QString host = dalinira::core::AdultContentProtectionService::normalizeHost(url.host());
+  if (!url.isValid() || (scheme != QLatin1String("http") && scheme != QLatin1String("https"))
+      || host.isEmpty()) {
     return;
   }
-  const QString encoded = url.toString(QUrl::FullyEncoded);
-  if (seen->contains(encoded)) return;
+
+  // The policy classifies domains, not complete URLs. yt-dlp can emit hundreds
+  // of signed media and caption URLs for the same host; retaining each query
+  // variant can exhaust the safety bound and must not turn a normal site into
+  // an adult-content match.
+  if (seen->contains(host)) return;
+  QUrl hostUrl;
+  hostUrl.setScheme(scheme);
+  hostUrl.setHost(host);
   if (urls->size() >= kMaximumProtectionUrls) {
     *complete = false;
+    // Continue preserving a genuine blocked hostname even after the bounded
+    // collection is full. Incompleteness alone is never an adult-domain match.
+    if (isProtectedUrlBlocked(hostUrl) && !urls->isEmpty()) urls->last() = hostUrl;
     return;
   }
-  seen->insert(encoded);
-  urls->append(url);
+  seen->insert(host);
+  urls->append(hostUrl);
 }
 
 void collectProtectionUrls(const QJsonValue &value, QVector<QUrl> *urls, QSet<QString> *seen,
@@ -603,8 +623,7 @@ void MediaDownloadService::startAnalysisProcess(const QUrl &url) {
     result.adultContentProtectionEnabled = analysisAdultContentProtectionEnabled_;
     result.adultProtectionContextUrl = analysisUrl_;
     if (analysisAdultContentProtectionEnabled_
-        && (!result.adultProtectionUrlsComplete
-            || containsBlockedAdultUrl(result.adultProtectionContextUrl, result.adultProtectionUrls))) {
+        && containsBlockedAdultUrl(result.adultProtectionContextUrl, result.adultProtectionUrls)) {
       emit analysisFailed(kAdultProtectionAnalysisMessage);
       return;
     }
@@ -648,10 +667,9 @@ QUuid MediaDownloadService::enqueue(const MediaDownloadRequest &candidate, QStri
   QString reason;
   if (error) error->clear();
   if (request.adultContentProtectionEnabled
-      && (!request.adultProtectionUrlsComplete
-          || containsBlockedAdultUrl(request.adultProtectionContextUrl.isEmpty()
-                                         ? request.url : request.adultProtectionContextUrl,
-                                     request.adultProtectionUrls))) {
+      && containsBlockedAdultUrl(request.adultProtectionContextUrl.isEmpty()
+                                     ? request.url : request.adultProtectionContextUrl,
+                                 request.adultProtectionUrls)) {
     if (error) *error = kAdultProtectionDownloadMessage;
     return {};
   }
@@ -765,10 +783,9 @@ void MediaDownloadService::startNextDownload() {
   const auto request = requests_.constFind(currentJobId_);
   if (index < 0 || request == requests_.cend()) { currentJobId_ = {}; startNextDownload(); return; }
   if (request->adultContentProtectionEnabled
-      && (!request->adultProtectionUrlsComplete
-          || containsBlockedAdultUrl(request->adultProtectionContextUrl.isEmpty()
-                                         ? request->url : request->adultProtectionContextUrl,
-                                     request->adultProtectionUrls))) {
+      && containsBlockedAdultUrl(request->adultProtectionContextUrl.isEmpty()
+                                     ? request->url : request->adultProtectionContextUrl,
+                                 request->adultProtectionUrls)) {
     finishCurrent(MediaDownloadState::Failed, kAdultProtectionDownloadMessage);
     return;
   }

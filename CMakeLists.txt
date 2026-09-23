@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(DaliNiraBrowser VERSION 7.2.0 LANGUAGES CXX)
+project(DaliNiraBrowser VERSION 7.2.1 LANGUAGES CXX)
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Default install prefix" FORCE)
@@ -266,6 +266,7 @@ set(DOWNLOADS_SOURCES
   browser/native/downloads/download_toolbar_ui.cpp
   browser/native/downloads/yt_dlp_update_manager.cpp
   browser/native/downloads/media_platform_registry.cpp
+  browser/native/downloads/media_page_url_resolver.cpp
 )
 
 set(TRANSLATE_SOURCES
@@ -777,6 +778,17 @@ add_executable(dalinira-browser-media-platform-registry-test
 )
 target_link_libraries(dalinira-browser-media-platform-registry-test PRIVATE Qt6::Core)
 add_test(NAME browser-media-platform-registry COMMAND dalinira-browser-media-platform-registry-test)
+
+add_executable(dalinira-browser-media-page-url-resolver-test
+  browser/native/tests/media_page_url_resolver_test.cpp
+  browser/native/downloads/media_page_url_resolver.cpp
+)
+target_link_libraries(dalinira-browser-media-page-url-resolver-test PRIVATE
+  Qt6::Core Qt6::Widgets Qt6::WebEngineCore Qt6::WebEngineWidgets)
+add_test(NAME browser-media-page-url-resolver COMMAND dalinira-browser-media-page-url-resolver-test)
+set_tests_properties(browser-media-page-url-resolver PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_DISABLE_SANDBOX=1;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu"
+  TIMEOUT 30)
 
 add_executable(dalinira-browser-desktop-tab-system-test
   browser/native/tests/desktop_tab_system_test.cpp

@@ -1,7 +1,7 @@
 # Maintainer: Muhammed Dali <support@dalinira.app>
 
 pkgname=dalinira-browser
-pkgver=7.2.0
+pkgver=7.2.1
 pkgrel=1
 pkgdesc="Native Qt/C++ desktop browser with integrated privacy and media tools"
 arch=('x86_64')

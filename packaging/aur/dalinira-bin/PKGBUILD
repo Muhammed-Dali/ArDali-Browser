@@ -1,7 +1,7 @@
 # Maintainer: Muhammed Dali <support@dalinira.app>
 
 pkgname=dalinira-bin
-pkgver=7.2.0
+pkgver=7.2.1
 pkgrel=1
 pkgdesc="DaliNira Browser native binary package"
 arch=('x86_64')

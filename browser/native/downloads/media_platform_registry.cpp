@@ -1,6 +1,7 @@
 #include "media_platform_registry.h"
 
 #include <QReadWriteLock>
+#include <QRegularExpression>
 #include <QSet>
 
 namespace {
@@ -192,6 +193,58 @@ bool MediaPlatformRegistry::isDirectMediaUrl(const QUrl &url) {
   if (lastDot >= 0 && lastDot < path.length() - 1) {
     const QString ext = path.mid(lastDot + 1);
     if (mediaExtensions.contains(ext)) return true;
+  }
+
+  return false;
+}
+
+bool MediaPlatformRegistry::isGenericPlatformFeedUrl(const QUrl &url) {
+  if (!url.isValid() || url.isEmpty()) return false;
+  const QString host = canonicalHost(url);
+  if (host.isEmpty()) return false;
+  const QString path = url.path().trimmed();
+
+  if (matchesDomain(host, QStringLiteral("tiktok.com"))) {
+    static const QRegularExpression mediaPostPattern(
+        QStringLiteral(R"(^/(?:@[^/]+/(?:video|photo)/\d+|v/\d+|embed/\d+|share/video/\d+|video/\d+)/?$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return !mediaPostPattern.match(path).hasMatch();
+  }
+
+  if (matchesDomain(host, QStringLiteral("instagram.com")) || matchesDomain(host, QStringLiteral("instagr.am"))) {
+    static const QRegularExpression mediaPostPattern(
+        QStringLiteral(R"(^/(?:reel|reels|p|tv)/[^/]+/?$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return !mediaPostPattern.match(path).hasMatch();
+  }
+
+  if (matchesDomain(host, QStringLiteral("youtube.com"))) {
+    if (path == QLatin1String("/watch") && url.hasQuery() && url.query().contains(QLatin1String("v="))) {
+      return false;
+    }
+    static const QRegularExpression shortsPattern(
+        QStringLiteral(R"(^/shorts/[^/]+/?$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (shortsPattern.match(path).hasMatch()) return false;
+    return true;
+  }
+
+  if (matchesDomain(host, QStringLiteral("x.com")) || matchesDomain(host, QStringLiteral("twitter.com"))) {
+    static const QRegularExpression tweetPattern(
+        QStringLiteral(R"(^/[^/]+/status/\d+/?$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return !tweetPattern.match(path).hasMatch();
+  }
+
+  if (matchesDomain(host, QStringLiteral("facebook.com")) || matchesDomain(host, QStringLiteral("fb.watch"))) {
+    static const QRegularExpression fbMediaPattern(
+        QStringLiteral(R"(^/(?:reel|watch|share/r|share/v|videos)/.+)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (fbMediaPattern.match(path).hasMatch()) return false;
+    if (path == QLatin1String("/watch/") && url.hasQuery() && url.query().contains(QLatin1String("v="))) {
+      return false;
+    }
+    return true;
   }
 
   return false;

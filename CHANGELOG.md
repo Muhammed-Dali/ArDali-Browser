@@ -2,6 +2,19 @@
 
 All notable release-facing changes to DaliNira Browser are documented here.
 
+## [7.2.1] - 2026-09-23
+
+### Fixed
+
+- **TikTok Media Page URL Resolver**: Improved candidate extraction to reliably handle modern DOM layouts, photo slideshows (`/photo/`), video ID patterns, rehydration data payloads, and explicit media anchors.
+- **Platform Feed URL Protection**: Added `isGenericPlatformFeedUrl` checks across the browser UI and download manager to prevent generic home/feed pages (e.g. `tiktok.com`, `tiktok.com/foryou`, `tiktok.com/explore`) from incorrectly triggering single-media download suggestions and auto-analysis.
+- **Adult Content Protection**: Fixed false-positive adult content classifications on download manager requests and non-navigation file transfers.
+- **Search Suggestions / New Tab**: Corrected search suggestion queries and New Tab omnibox search handling for smooth suggestion navigation.
+
+### Added
+
+- Added automated regression tests for modern TikTok media extraction, slideshow resolution, and generic platform feed URL detection across the native download infrastructure.
+
 ## [7.2.0] - 2026-09-21
 
 ### Added

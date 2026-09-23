@@ -644,14 +644,14 @@ static bool runFullProductionBenchmark(const QString &productionFile) {
   std::cout << "  [PASS] Subdomain: Cok katmanli alt domainler basariyla engellendi.\n";
 
   // 3. Safe non-match (search engines and critical platforms)
-  assert(!table.matchesDomain("google.com"));
-  assert(!table.matchesDomain("www.google.com"));
-  assert(!table.matchesDomain("duckduckgo.com"));
-  assert(!table.matchesDomain("startpage.com"));
-  assert(!table.matchesDomain("mojeek.com"));
-  assert(!table.matchesDomain("youtube.com"));
-  assert(!table.matchesDomain("wikipedia.org"));
-  assert(!table.matchesDomain("archlinux.org"));
+  assert(!table.matchesDomain(std::string_view("google.com")));
+  assert(!table.matchesDomain(std::string_view("www.google.com")));
+  assert(!table.matchesDomain(std::string_view("duckduckgo.com")));
+  assert(!table.matchesDomain(std::string_view("startpage.com")));
+  assert(!table.matchesDomain(std::string_view("mojeek.com")));
+  assert(!table.matchesDomain(std::string_view("youtube.com")));
+  assert(!table.matchesDomain(std::string_view("wikipedia.org")));
+  assert(!table.matchesDomain(std::string_view("archlinux.org")));
 
   assert(!table.isBlockedHost(QStringLiteral("google.com"), service));
   assert(!table.isBlockedHost(QStringLiteral("www.google.com"), service));

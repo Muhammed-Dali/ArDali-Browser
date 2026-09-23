@@ -87,6 +87,7 @@ using dalinira::i18n::I18n;
 #include "downloads/download_toolbar_ui.h"
 #include "downloads/download_ui_model.h"
 #include "downloads/local_media_player_page.h"
+#include "downloads/media_page_url_resolver.h"
 #include "translate/translate_service.h"
 #include "desktop_tabs/find_bar_widget.h"
 #include <QShortcut>
@@ -468,12 +469,15 @@ class BrowserWebPage final : public QWebEnginePage {
       }
       return false;
     }
-    if (isMainFrame && url.scheme().compare(QLatin1String("dalinira"), Qt::CaseInsensitive) == 0 &&
+    if (url.scheme().compare(QLatin1String("dalinira"), Qt::CaseInsensitive) == 0 &&
         url.host().compare(QLatin1String("navigate"), Qt::CaseInsensitive) == 0) {
       // 1. Strict origin validation: Only dalinira://newtab or dalinira://newtab/ is permitted
       const QUrl sourceUrl = this->url();
       const QString capability = property("dalinira-suggest-capability").toString();
-      const bool trustedSource = isNewTabUrl(sourceUrl) && !capability.isEmpty() &&
+      auto *sourceView = qobject_cast<QWebEngineView *>(parent());
+      auto *owner = sourceView ? qobject_cast<BrowserWindow *>(sourceView->window()) : nullptr;
+      const bool trustedSource = isNewTabUrl(sourceUrl) && !capability.isEmpty() && owner &&
+          owner->currentView() == sourceView && profile() == owner->services().profile &&
           QUrlQuery(url).queryItemValue(QStringLiteral("cap")) == capability;
       if (!trustedSource) {
         qWarning() << "[Security] Denied unauthorized internal navigation";
@@ -1454,7 +1458,24 @@ void BrowserWindow::setupUi() {
           ? currentView()->url() : lastActiveWebUrl_;
       const bool pageHasMedia = currentView() && currentView()->page() && currentView()->page()->recentlyAudible();
       if (!activeUrl.isEmpty() && MediaPlatformRegistry::shouldAutoAnalyzeMedia(activeUrl, pageHasMedia)) {
-        downloadPopup_->setSuggestedMedia(activeUrl, currentView() ? currentView()->title() : QString{});
+        const QString pageTitle = currentView() ? currentView()->title() : QString{};
+        // Resolve while the source page is still the active tab. The popup's
+        // second click must only forward this captured permalink; it must not
+        // depend on whichever tab happens to be active later.
+        resolveActiveMediaPageUrl(activeUrl, [this, activeUrl, pageTitle](const QUrl &resolvedUrl) {
+          if (!downloadPopup_ || !mediaDownload_) return;
+          if (MediaPlatformRegistry::isGenericPlatformFeedUrl(resolvedUrl)) {
+            downloadPopup_->setSuggestedMedia(QUrl{}, QString{});
+          } else {
+            const QString popupDetail = resolvedUrl != activeUrl
+                ? resolvedUrl.toDisplayString(QUrl::RemoveScheme | QUrl::RemoveQuery
+                                              | QUrl::RemoveFragment).left(160)
+                : pageTitle;
+            downloadPopup_->setSuggestedMedia(resolvedUrl, popupDetail);
+          }
+          downloadPopup_->showAnchored(mediaDownload_, false);
+        });
+        return;
       } else {
         downloadPopup_->setSuggestedMedia(QUrl{}, QString{});
       }
@@ -2464,7 +2485,9 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
         const QString capability = QUuid::createUuid().toString(QUuid::WithoutBraces);
         view->page()->setProperty("dalinira-suggest-capability", capability);
         const QString json = QString::fromUtf8(QJsonDocument(QJsonArray{capability}).toJson(QJsonDocument::Compact));
-        view->page()->runJavaScript(QStringLiteral("if(window.daliniraSuggestionBridge)window.daliniraSuggestionBridge(%1[0]);").arg(json));
+        view->page()->runJavaScript(QStringLiteral(
+            "window.navigationCapability=%1[0];"
+            "if(window.daliniraSuggestionBridge)window.daliniraSuggestionBridge(%1[0]);").arg(json));
       }
       syncNewTabViews();
       updateSearchEngineIcon();
@@ -3016,12 +3039,14 @@ void BrowserWindow::showMediaDownloads(const QUrl &sourceUrl, bool analyzeImmedi
     const QUrl activeUrl = (currentView() && !isNewTabUrl(currentView()->url()) && currentView()->url().scheme() != QLatin1String("dalinira"))
         ? currentView()->url() : lastActiveWebUrl_;
     const bool pageHasMedia = currentView() && currentView()->page() && currentView()->page()->recentlyAudible();
-    if (!activeUrl.isEmpty() && MediaPlatformRegistry::shouldAutoAnalyzeMedia(activeUrl, pageHasMedia)) {
+    if (!activeUrl.isEmpty() && MediaPlatformRegistry::shouldAutoAnalyzeMedia(activeUrl, pageHasMedia)
+        && !MediaPlatformRegistry::isGenericPlatformFeedUrl(activeUrl)) {
       targetUrl = activeUrl;
       shouldAnalyze = true;
     }
   } else {
-    shouldAnalyze = analyzeImmediately || MediaPlatformRegistry::shouldAutoAnalyzeMedia(targetUrl, false);
+    shouldAnalyze = analyzeImmediately || (MediaPlatformRegistry::shouldAutoAnalyzeMedia(targetUrl, false)
+                                           && !MediaPlatformRegistry::isGenericPlatformFeedUrl(targetUrl));
     if (!shouldAnalyze && !MediaPlatformRegistry::shouldAutoAnalyzeMedia(targetUrl, false)) {
       targetUrl.clear();
     }
@@ -3052,6 +3077,34 @@ void BrowserWindow::showMediaDownloads(const QUrl &sourceUrl, bool analyzeImmedi
     page->setSourceUrl(targetUrl, shouldAnalyze);
   }
   addInternalTab(page, QStringLiteral("İndirmeler"), BrowserIcons::icon(BrowserIcon::Download), QStringLiteral("downloads"));
+}
+
+void BrowserWindow::resolveActiveMediaPageUrl(
+    const QUrl &fallbackUrl, std::function<void(const QUrl &)> callback) {
+  if (!callback) return;
+  QPointer<BrowserWindow> guard(this);
+  QPointer<QWebEngineView> sourceView(currentView());
+  QPointer<QWebEnginePage> sourcePage(sourceView ? sourceView->page() : nullptr);
+  if (!sourcePage || fallbackUrl.isEmpty() || sourceView->url() != fallbackUrl) {
+    callback(fallbackUrl);
+    return;
+  }
+
+  sourcePage->runJavaScript(
+      MediaPageUrlResolver::extractionScript(), QWebEngineScript::ApplicationWorld,
+      [guard, sourceView, fallbackUrl, callback = std::move(callback)](const QVariant &result) {
+        if (!guard) return;
+        const QUrl resolved = MediaPageUrlResolver::validatedResult(result, fallbackUrl);
+        QUrl logUrl(resolved);
+        logUrl.setQuery(QString{});
+        logUrl.setFragment(QString{});
+        qInfo().noquote() << "[MediaDownload] Çözülen aktif medya URL'si:"
+                          << logUrl.toString(QUrl::FullyEncoded);
+        // Holding the guarded view until completion prevents its page from
+        // disappearing midway through resolution; never dereference it here.
+        Q_UNUSED(sourceView);
+        callback(resolved);
+      });
 }
 
 void BrowserWindow::openLocalMedia(const LocalMediaOpenRequest &request) {

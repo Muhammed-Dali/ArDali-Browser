@@ -138,6 +138,37 @@ int main(int argc, char **argv) {
   adultProtection.clear();
   adultProtection.clearAllowlist();
   adultProtection.loadFromLines({QStringLiteral("adult-test.example")});
+  const QUrl normalYoutubeUrl(QStringLiteral(
+      "https://www.youtube.com/watch?v=AsRD9IhICs8&list=RDAsRD9IhICs8&start_radio=1"));
+
+  // A current YouTube analysis can contain hundreds of distinct signed
+  // subtitle URLs on the same hostname. Domain protection must deduplicate by
+  // normalized hostname instead of treating the URL count as adult content.
+  QJsonObject largeYoutubeMetadata = QJsonDocument::fromJson(metadata).object();
+  QJsonArray captionUrls;
+  for (int index = 0; index < 700; ++index) {
+    captionUrls.append(QJsonObject{{QStringLiteral("url"),
+        QStringLiteral("https://www.youtube.com/api/timedtext?translation=%1").arg(index)}});
+  }
+  largeYoutubeMetadata.insert(QStringLiteral("automatic_captions"), captionUrls);
+  MediaAnalysisResult largeYoutubeAnalysis;
+  assert(MediaDownloadService::parseAnalysisJson(
+      QJsonDocument(largeYoutubeMetadata).toJson(QJsonDocument::Compact), normalYoutubeUrl,
+      &largeYoutubeAnalysis, &reason));
+  assert(largeYoutubeAnalysis.adultProtectionUrlsComplete);
+  assert(largeYoutubeAnalysis.adultProtectionUrls.size() == 2);
+  for (const QUrl &protectionUrl : largeYoutubeAnalysis.adultProtectionUrls) {
+    assert(protectionUrl.query().isEmpty());
+    assert(!adultProtection.isBlockedHost(protectionUrl.host()));
+  }
+
+  const QUrl normalUrlWithBlockedText(QStringLiteral(
+      "https://normal.example/video/adult-test.example?next=adult-test.example"));
+  for (const QUrl &normalUrl : {normalYoutubeUrl, normalUrlWithBlockedText}) {
+    analysisReady = false;
+    assert(service.analyze(normalUrl, true));
+    assert(waitFor([&] { return analysisReady; }));
+  }
   const QUrl blockedUrl(QStringLiteral("https://adult-test.example/watch?v=blocked"));
   const qint64 invocationsBeforeBlocked = QFileInfo(invocationLog).size();
   bool blockedAnalysisStarted = false;
@@ -209,11 +240,12 @@ int main(int argc, char **argv) {
   assert(!blockedDownloadError.isEmpty());
 
   MediaDownloadRequest incompleteFinalRequest = request;
+  incompleteFinalRequest.url = QUrl(QStringLiteral("https://example.com/incomplete-metadata"));
   incompleteFinalRequest.adultContentProtectionEnabled = true;
   incompleteFinalRequest.adultProtectionUrlsComplete = false;
   blockedDownloadError.clear();
-  assert(service.enqueue(incompleteFinalRequest, &blockedDownloadError).isNull());
-  assert(!blockedDownloadError.isEmpty());
+  assert(!service.enqueue(incompleteFinalRequest, &blockedDownloadError).isNull());
+  assert(blockedDownloadError.isEmpty());
 
   MediaDownloadRequest normalProtectedRequest = request;
   normalProtectedRequest.url = QUrl(QStringLiteral("https://example.com/normal-protected"));

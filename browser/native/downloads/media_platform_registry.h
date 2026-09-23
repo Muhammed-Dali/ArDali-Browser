@@ -15,6 +15,10 @@ class MediaPlatformRegistry {
   // Returns true if the URL points directly to a known audio/video file or streaming manifest (.mp4, .mp3, .m3u8, etc.)
   static bool isDirectMediaUrl(const QUrl &url);
 
+  // Returns true if the URL is a generic feed or homepage of a major social platform (e.g. tiktok.com/, tiktok.com/foryou)
+  // rather than a specific downloadable media item
+  static bool isGenericPlatformFeedUrl(const QUrl &url);
+
   // Central decision whether the URL should be automatically forwarded to media analysis
   // Returns true for supported media platforms, direct media files, or unknown sites that actively have media
   // Returns false for adult platforms and normal web sites

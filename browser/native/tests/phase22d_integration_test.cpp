@@ -382,6 +382,50 @@ int main(int argc, char **argv)
              "!!document.querySelector('.suggestion-row img[onerror]')")
              .toBool());
 
+    // Search submission has its own bridge and capability. A pending/failed
+    // suggestion request, an unsupported provider, or a broken suggestion
+    // callback must not prevent navigation to the selected engine.
+    const QList<QPair<QString, QString>> searchEngines{
+        {QStringLiteral("Google"), QStringLiteral("www.google.com")},
+        {QStringLiteral("DuckDuckGo"), QStringLiteral("duckduckgo.com")},
+        {QStringLiteral("Startpage"), QStringLiteral("www.startpage.com")},
+        {QStringLiteral("Mojeek"), QStringLiteral("www.mojeek.com")},
+    };
+    network.delay = 10000;
+    network.body = QByteArrayLiteral("malformed suggestion response");
+    for (const auto &[engine, expectedHost] : searchEngines) {
+        const int searchTabIndex = window.addNewTab();
+        wait(400);
+        auto *searchView = window.currentView();
+        assert(waitForJs(searchView->page(),
+                         "!!window.navigationCapability&&!!document.querySelector('#search')",
+                         10000));
+        const QString setupScript = QStringLiteral(
+            "(()=>{setEngine(%1[0],false);"
+            "window.daliniraSuggestionBridge=()=>{throw new Error('fixture bridge failure')};"
+            "const input=document.querySelector('#query');input.focus();"
+            "input.value='independent search submission';"
+            "input.dispatchEvent(new Event('input',{bubbles:true}));return true})()")
+            .arg(QString::fromUtf8(QJsonDocument(QJsonArray{engine}).toJson(QJsonDocument::Compact)));
+        assert(js(searchView->page(), setupScript).toBool());
+        wait(300);
+        assert(js(searchView->page(),
+                  "document.querySelector('#search').requestSubmit();true").toBool());
+
+        QElapsedTimer searchTimer;
+        searchTimer.start();
+        while (searchView->page()->requestedUrl().host() != expectedHost
+               && searchTimer.elapsed() < 10000) {
+            wait(50);
+        }
+        assert(searchView->page()->requestedUrl().host() == expectedHost);
+        searchView->stop();
+        window.closeTab(searchTabIndex);
+        wait(100);
+    }
+    network.delay = 0;
+    network.body = R"JSON(["hav",["hava","hava durumu"]])JSON";
+
     js(
         page,
         "location.href='dalinira://suggest?"

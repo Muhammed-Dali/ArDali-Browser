@@ -82,6 +82,25 @@ int main() {
   assert(MediaPlatformRegistry::isAdultPlatform(QUrl(QStringLiteral("https://customadultsite.xyz/watch"))));
   assert(!MediaPlatformRegistry::shouldAutoAnalyzeMedia(QUrl(QStringLiteral("https://customadultsite.xyz/watch")), true));
 
+  // 9. isGenericPlatformFeedUrl
+  // TikTok: feeds vs media items
+  assert(MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.tiktok.com/"))));
+  assert(MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.tiktok.com/foryou"))));
+  assert(MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.tiktok.com/explore"))));
+  assert(MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.tiktok.com/tr-TR/"))));
+  assert(!MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.tiktok.com/@user/video/7123456789012345678"))));
+  assert(!MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.tiktok.com/@user/photo/7123456789012345678"))));
+  assert(!MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.tiktok.com/v/7123456789012345678"))));
+  // Instagram: feed vs reel/post
+  assert(MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.instagram.com/"))));
+  assert(MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.instagram.com/explore/"))));
+  assert(!MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.instagram.com/reel/C8xyz/"))));
+  assert(!MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.instagram.com/p/C8xyz/"))));
+  // YouTube: home vs watch/shorts
+  assert(MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.youtube.com/"))));
+  assert(!MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.youtube.com/watch?v=dQw4w9WgXcQ"))));
+  assert(!MediaPlatformRegistry::isGenericPlatformFeedUrl(QUrl(QStringLiteral("https://www.youtube.com/shorts/abc123xyz"))));
+
   std::cout << "media_platform_registry_test: all assertions passed successfully!\n";
   return 0;
 }

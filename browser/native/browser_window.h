@@ -1,6 +1,7 @@
 #ifndef BROWSER_WINDOW_H_
 #define BROWSER_WINDOW_H_
 
+#include <functional>
 #include <memory>
 #include <QFrame>
 #include <QCache>
@@ -386,6 +387,8 @@ private:
 
   void updateDownloadToolbar();
   void showDownloadStartedAnimation();
+  void resolveActiveMediaPageUrl(const QUrl &fallbackUrl,
+                                 std::function<void(const QUrl &)> callback);
   bool downloadAnimationsEnabled() const;
 
   TranslateBubblePopup *translateBubble_ = nullptr;

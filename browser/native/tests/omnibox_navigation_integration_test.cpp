@@ -232,6 +232,9 @@ int main(int argc, char *argv[]) {
 
       // Assert native bridge navigation is present
       assert(content.contains(QStringLiteral("dalinira://navigate?q=")));
+      assert(content.contains(QStringLiteral("dalinira-navigation-bridge")));
+      assert(content.contains(QStringLiteral("clearTimeout(suggestionRequestTimer);++suggestionId;closeSuggestions()")));
+      assert(content.contains(QStringLiteral("encodeURIComponent(window.navigationCapability)")));
 
       std::cout << "  [PASS] 8. Source invariant: new_tab_html.cpp has no duplicate search tables or regex" << std::endl;
     } else {

@@ -241,6 +241,9 @@ void testNewTabDataAndScriptSafety() {
   assert(html.contains(QStringLiteral("suggestionRequestTimer=setTimeout(requestSuggestions,80)")));
   assert(html.contains(QStringLiteral("if(document.activeElement!==query&&!suggestionList.matches(':hover'))closeSuggestions()")));
   assert(html.contains(QStringLiteral("query.setSelectionRange(suggestionTypedValue.length,completion.length)")));
+  assert(html.contains(QStringLiteral("id=\"dalinira-navigation-bridge\"")));
+  assert(html.contains(QStringLiteral("bridge.src='dalinira://navigate?q='")));
+  assert(html.contains(QStringLiteral("encodeURIComponent(window.navigationCapability)")));
 
   const QString updateScript = newTabTopSitesUpdateScript(frequent, bookmarks);
   assert(updateScript.contains(QStringLiteral("window.renderFrequentSites")));

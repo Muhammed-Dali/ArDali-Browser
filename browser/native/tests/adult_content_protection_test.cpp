@@ -74,6 +74,22 @@ int main(int argc, char *argv[]) {
 
   assert(service.domainCount() == 2);
 
+  // URL classification is hostname-only. Blocklist-looking text elsewhere in
+  // a normal URL must never become a domain match.
+  {
+    const QUrl youtubeUrl(QStringLiteral(
+        "https://www.youtube.com/watch?v=AsRD9IhICs8&list=RDAsRD9IhICs8&start_radio=1"));
+    const QUrl queryUrl(QStringLiteral(
+        "https://normal.example/watch?next=https%3A%2F%2Fadult-test.example%2Fvideo"));
+    const QUrl pathUrl(QStringLiteral(
+        "https://normal.example/video/adult-test.example/123"));
+    assert(!service.isBlocked(youtubeUrl));
+    assert(!service.isBlocked(queryUrl));
+    assert(!service.isBlocked(pathUrl));
+    assert(service.isBlocked(QUrl(QStringLiteral("https://media.adult-test.example/video/123"))));
+    std::cout << "  [PASS] URL classification uses only normalized hostname\n";
+  }
+
   // -------------------------------------------------------------
   // Test A: adult-test.example -> BLOCK
   // -------------------------------------------------------------
